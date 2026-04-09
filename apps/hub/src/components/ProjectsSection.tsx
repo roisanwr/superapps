@@ -1,91 +1,110 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { ArrowUpRight } from "lucide-react";
-import Link from "next/link";
+import { useRef } from "react";
+import { motion, useScroll, useTransform } from "framer-motion";
 
-export default function ProjectsSection() {
-  const projects = [
-    {
-      title: "MyKanz",
-      desc: "Platform manajemen keuangan elegan dengan integrasi asset, budget, dan goal tracking.",
-      image: "finance",
-      link: "/finance",
-      tags: ["Next.js", "PostgreSQL", "Supabase"],
-      color: "from-emerald-500/20 to-transparent",
-      accent: "text-emerald-400",
-    },
-    {
-      title: "BitMove",
-      desc: "Gamified fitness tracker. Ubah misi dunia nyata dan workout menjadi poin exp ala RPG.",
-      image: "quests",
-      link: "/quests",
-      tags: ["RPG Engine", "Tailwind", "Turborepo"],
-      color: "from-blue-500/20 to-transparent",
-      accent: "text-blue-400",
-    }
-  ];
+const projects = [
+  {
+    number: "01",
+    category: "E-COMMERCE",
+    title: ["Seamless", "Storefronts"],
+    description:
+      "A high-performance headless e-commerce platform built with Next.js and Shopify. Designed to handle massive traffic spikes without dropping a single frame, keeping the shopping experience smooth and uninterrupted.",
+    image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=1400&auto=format&fit=crop",
+    alt: "monolithic concrete architectural structure",
+    reversed: false,
+  },
+  {
+    number: "02",
+    category: "SAAS PLATFORM",
+    title: ["Data, made", "Beautiful"],
+    description:
+      "A complex real-time dashboard that turns thousands of messy data points into clean, actionable insights. Built with a focus on clear typography, intuitive navigation, and lightning-fast state management.",
+    image: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=1400&auto=format&fit=crop",
+    alt: "modern glass building facade",
+    reversed: true,
+  },
+];
+
+type Project = typeof projects[0];
+
+function ProjectCard({ project }: { project: Project }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({ target: containerRef, offset: ["start end", "end start"] });
+  const imageY = useTransform(scrollYProgress, [0, 1], ["-6%", "6%"]);
 
   return (
-    <section className="py-24 relative bg-zinc-950/50" id="projects">
-      <div className="max-w-5xl mx-auto px-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.6 }}
-          className="mb-16"
+    <div ref={containerRef} className="relative grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-0 items-center">
+      {/* Image */}
+      <motion.div
+        className={`md:col-span-7 relative z-10 overflow-hidden ${project.reversed ? "order-1 md:order-2" : ""}`}
+        initial={{ opacity: 0, scale: 0.96 }}
+        whileInView={{ opacity: 1, scale: 1 }}
+        viewport={{ once: true, margin: "-80px" }}
+        transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <motion.img
+          /* eslint-disable-next-line @next/next/no-img-element */
+          style={{ y: imageY, scale: 1.12 }}
+          className={`w-full h-[500px] md:h-[800px] object-cover filter ${project.reversed ? "brightness-90" : "brightness-95"}`}
+          alt={project.alt}
+          src={project.image}
+        />
+      </motion.div>
+
+      {/* Card */}
+      <motion.div
+        className={`relative z-20 p-8 md:p-16 shadow-none ${
+          project.reversed
+            ? "md:col-span-5 md:-mr-24 order-2 md:order-1 bg-surface-container-low"
+            : "md:col-span-5 md:-ml-24 bg-surface"
+        }`}
+        initial={{ opacity: 0, x: project.reversed ? -50 : 50 }}
+        whileInView={{ opacity: 1, x: 0 }}
+        viewport={{ once: true, margin: "-80px" }}
+        transition={{ duration: 0.95, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <span className="font-label text-xs tracking-widest text-primary block mb-4 md:mb-6">
+          {project.number} / {project.category}
+        </span>
+        <h3 className="text-3xl md:text-5xl font-headline font-light mb-6 md:mb-8 leading-tight">
+          {project.title[0]} <br /> {project.title[1]}
+        </h3>
+        <p className="font-light text-on-surface-variant leading-loose mb-8 md:mb-12">
+          {project.description}
+        </p>
+        <motion.a
+          className="inline-block border-b border-primary pb-1 text-sm font-label tracking-widest"
+          href="#"
+          whileHover={{ letterSpacing: "0.18em" }}
+          transition={{ duration: 0.3 }}
         >
-          <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">Super Apps</h2>
-          <p className="text-zinc-400 text-lg max-w-xl">
-            Satu identitas, berbagai utilitas. Coba aplikasi dalam ekosistem ini secara langsung.
-          </p>
-        </motion.div>
+          VIEW CASE STUDY
+        </motion.a>
+      </motion.div>
+    </div>
+  );
+}
 
-        <div className="grid md:grid-cols-2 gap-8">
-          {projects.map((project, idx) => (
-            <motion.div
-              key={project.title}
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-100px" }}
-              transition={{ duration: 0.6, delay: idx * 0.2 }}
-              className="group relative rounded-3xl overflow-hidden border border-white/10 bg-zinc-900/50"
-            >
-              <div className={`absolute inset-0 bg-gradient-to-br ${project.color} opacity-0 group-hover:opacity-100 transition-opacity duration-700`} />
-              
-              <div className="p-8 pb-0 relative z-10">
-                <div className="flex justify-between items-start mb-4">
-                  <h3 className="text-3xl font-bold">{project.title}</h3>
-                  <Link 
-                    href={project.link}
-                    className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-colors group/btn"
-                  >
-                    <ArrowUpRight className="w-5 h-5 group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5 transition-transform" />
-                  </Link>
-                </div>
-                
-                <p className="text-zinc-400 mb-6 min-h-[48px]">{project.desc}</p>
-                
-                <div className="flex flex-wrap gap-2 mb-8">
-                  {project.tags.map(tag => (
-                    <span key={tag} className="text-xs font-medium px-3 py-1 rounded-full bg-white/5 border border-white/10">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
+export default function ProjectsSection() {
+  return (
+    <section className="py-24 md:py-48 px-6 md:px-12 max-w-screen-2xl mx-auto space-y-32 md:space-y-64">
+      <motion.div
+        className="text-center"
+        initial={{ opacity: 0, y: 30 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.7 }}
+      >
+        <span className="font-label text-xs tracking-widest text-primary block uppercase mb-4">Recent Builds</span>
+        <h2 className="text-4xl md:text-5xl font-headline font-light">
+          Featured <span className="italic text-on-surface-variant">Projects</span>
+        </h2>
+      </motion.div>
 
-              {/* Mockup Placeholder */}
-              <div className="relative z-10 w-full h-[250px] bg-zinc-900 border-t border-white/10 rounded-t-2xl mt-4 mx-8 shadow-2xl overflow-hidden flex items-center justify-center">
-                 <div className={`text-2xl font-bold blur-[1px] opacity-30 ${project.accent}`}>
-                   {project.image.toUpperCase()} PREVIEW
-                 </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </div>
+      {projects.map((project) => (
+        <ProjectCard key={project.number} project={project} />
+      ))}
     </section>
   );
 }

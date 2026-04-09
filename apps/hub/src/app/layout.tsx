@@ -1,20 +1,21 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, Noto_Serif } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const notoSerif = Noto_Serif({
+  variable: "--font-noto-serif",
   subsets: ["latin"],
+  weight: ["300", "400", "500", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "Roisan | Digital Space",
-  description: "Portfolio, Finance, & Quests platform by Roisan.",
+  title: "Architectural Editorial | The Editorial Flow",
+  description: "Digital experiences where clean code meets intentional design.",
 };
 
 export default function RootLayout({
@@ -25,9 +26,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${notoSerif.variable} ${inter.variable} h-full antialiased light`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="bg-surface text-on-surface antialiased font-body min-h-full flex flex-col">{children}</body>
     </html>
   );
 }

@@ -1,5 +1,5 @@
 export const siteConfig = {
-  name: "Taqiyuddin Rois", // Dummy placeholder, change later
+  name: "Rois", // Dummy placeholder, change later
   email: "roisanwar44@gmail.com", // Dummy placeholder
   navLinks: [
     { name: "About", href: "#about" },
@@ -17,7 +17,7 @@ export const siteConfig = {
 
 export const heroData = {
   greeting: "Hi, my name is",
-  name: "Taqiyuddin Rois.", // Dummy placeholder
+  name: "Rois Anwar.", // Dummy placeholder
   typedStrings: [
     "things for the web.",
     "pixel-perfect UIs.",

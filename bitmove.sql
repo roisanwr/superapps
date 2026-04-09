@@ -24,7 +24,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS public.profiles (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     username text UNIQUE, 
-    password_hash text, -- 🔐 DITAMBAHKAN: Untuk menyimpan password yang sudah di-hash oleh backend
+    password_hash text,
     full_name text,
     avatar_url text,
     role public.user_role DEFAULT 'user'::public.user_role,
@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS public.tasks (
     is_completed boolean DEFAULT false,
     last_completed_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()),
-    is_custom boolean DEFAULT false
+    is_custom boolean DEFAULT false,
+    polarity TEXT NOT NULL DEFAULT 'POSITIVE'
 );
 
 CREATE TABLE IF NOT EXISTS public.workouts (
@@ -101,7 +102,8 @@ CREATE TABLE IF NOT EXISTS public.task_library (
     default_frequency public.task_frequency DEFAULT 'Daily'::public.task_frequency,
     default_target_value integer DEFAULT 1,
     default_unit text DEFAULT 'Checklist'::text,
-    icon_emoji text
+    icon_emoji text,
+    polarity TEXT NOT NULL DEFAULT 'POSITIVE'
 );
 
 -- ================== EKOSISTEM WORKOUT / GYM ================== --
@@ -150,30 +152,28 @@ CREATE TABLE IF NOT EXISTS public.sets (
 
 -- ================== EKOSISTEM PROGRAM LATIHAN (WORKOUT PLAYLIST) ================== --
 
--- 1. Induk Program / Playlist (Menyimpan Metadata)
 CREATE TABLE IF NOT EXISTS public.training_programs (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    title text NOT NULL,              -- Misal: "Program Pembentukan Otot Sparky"
-    total_weeks integer NOT NULL,     -- Durasi siklus (1, 2, 3, atau 4)
-    is_active boolean DEFAULT true,   -- Hanya 1 program yang boleh aktif per user
-    start_date date DEFAULT CURRENT_DATE, -- Kunci penentu rotasi minggu
+    title text NOT NULL,
+    total_weeks integer NOT NULL,
+    is_active boolean DEFAULT true,
+    start_date date DEFAULT CURRENT_DATE,
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now())
 );
 
--- 2. Detail Jadwal per Hari (Menyimpan Isi Playlist)
 CREATE TABLE IF NOT EXISTS public.program_schedules (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     program_id uuid NOT NULL REFERENCES public.training_programs(id) ON DELETE CASCADE,
-    week_number integer NOT NULL,     -- Minggu ke: 1, 2, 3, atau 4
-    day_of_week integer NOT NULL,     -- Hari ke: 1 (Senin) sampai 7 (Minggu)
+    week_number integer NOT NULL,
+    day_of_week integer NOT NULL,
     exercise_id uuid NOT NULL REFERENCES public.exercise_library(id),
-    target_tier public.tier_enum NOT NULL, -- Target kesulitan (misal: 'C')
-    notes text                        -- Pesan penyemangat / instruksi form
+    target_tier public.tier_enum NOT NULL,
+    notes text
 );
 
 -- =================================================================================
--- 4. DATABASE INDEXING (PENTING UNTUK PERFORMA! ⚡)
+-- 4. DATABASE INDEXING ⚡
 -- =================================================================================
 CREATE INDEX IF NOT EXISTS idx_tasks_user_freq ON public.tasks(user_id, frequency, is_completed);
 CREATE INDEX IF NOT EXISTS idx_point_logs_user ON public.point_logs(user_id);
@@ -218,11 +218,21 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
--- Fitur: Trigger saat Task Selesai/Di-Undo
+-- Fitur: Trigger saat Task Selesai/Di-Undo (dengan fitur "tutup mata" saat reset sistem)
 CREATE OR REPLACE FUNCTION public.handle_task_completion() RETURNS TRIGGER AS $$
 DECLARE
     reward_data jsonb;
+    is_system_reset text;
 BEGIN
+    -- 🕵️‍♂️ CEK TANDA PENGENAL: Apakah aksi ini dilakukan oleh Cron Job?
+    is_system_reset := current_setting('bitmove.is_resetting', true);
+    
+    -- Jika ini dari cron reset, LANGSUNG KELUAR! Abaikan logika nambah/ngurangin point!
+    IF is_system_reset = 'true' THEN
+        RETURN NEW;
+    END IF;
+
+    -- Logika normal saat USER manual klik complete / undo
     IF (NEW.is_completed = true AND OLD.is_completed = false) THEN
         reward_data := public.calculate_task_reward(NEW.priority, NEW.frequency, NEW.is_custom);
         INSERT INTO public.point_logs (user_id, xp_change, points_change, source_type, description)
@@ -232,6 +242,7 @@ BEGIN
         INSERT INTO public.point_logs (user_id, xp_change, points_change, source_type, description)
         VALUES (NEW.user_id, -(reward_data->>'xp')::int, -(reward_data->>'points')::int, 'task', 'Undo: ' || NEW.title);
     END IF;
+    
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -275,6 +286,9 @@ FOR EACH ROW EXECUTE FUNCTION public.process_game_stats();
 -- =================================================================================
 CREATE OR REPLACE FUNCTION public.handle_smart_global_reset() RETURNS void AS $$
 BEGIN
+    -- 🤫 AKTIFKAN MODE SILENT: Beritahu seluruh sistem database bahwa kita sedang melakukan Reset Global
+    PERFORM set_config('bitmove.is_resetting', 'true', true);
+
     -- STEP 1: Kumpulkan user yang butuh di-reset HARI INI berdasarkan zona waktu mereka
     CREATE TEMP TABLE temp_users_to_reset ON COMMIT DROP AS
     SELECT id, streak_current, streak_max, last_active_date, timezone
@@ -284,7 +298,7 @@ BEGIN
     IF (SELECT count(*) FROM temp_users_to_reset) > 0 THEN
         
         -- =====================================================================
-        -- STEP 2: EKSEKUSI HUKUMAN (PUNISHMENT) HARDCORE ASLI MILIKMU ⚔️
+        -- STEP 2: EKSEKUSI HUKUMAN (PUNISHMENT) ⚔️
         -- =====================================================================
         
         -- A. Macro Punishment (-200) untuk Full Skip Day
@@ -306,7 +320,6 @@ BEGIN
         -- STEP 3: EVALUASI STREAK & BONUS GABUNGAN 🏆 (Daily Quests + Training)
         -- =====================================================================
         
-        -- Kumpulkan metrik gabungan (Quests + Workouts) ke dalam temp table
         CREATE TEMP TABLE temp_user_stats ON COMMIT DROP AS
         SELECT u.id as user_id, 
                u.streak_current,
@@ -323,7 +336,6 @@ BEGIN
                COALESCE(wact.has_workout, 0) as has_workout
         FROM temp_users_to_reset u
         LEFT JOIN public.tasks t ON t.user_id = u.id AND t.frequency = 'Daily'
-        -- Cek apakah user punya jadwal workout di hari sebelum reset (kemarin)
         LEFT JOIN LATERAL (
             SELECT 1 as has_schedule
             FROM public.training_programs tp
@@ -339,7 +351,6 @@ BEGIN
             WHERE tp.user_id = u.id AND tp.is_active = true
             LIMIT 1
         ) sched ON true
-        -- Cek apakah user beneran melakukan workout yang 'completed' di hari sebelum reset (kemarin)
         LEFT JOIN LATERAL (
             SELECT 1 as has_workout
             FROM public.workouts w
@@ -351,7 +362,7 @@ BEGIN
         ) wact ON true
         GROUP BY u.id, u.streak_current, u.streak_max, u.last_active_date, u.timezone, sched.has_schedule, wact.has_workout;
 
-        -- Bonus Streak (+20 XP, +5 Points) jika Load > 0 & >= 80% completion rate (Quests + Training)
+        -- Bonus Streak (+20 XP, +5 Points) jika Load > 0 & >= 80% completion rate
         INSERT INTO public.point_logs (user_id, xp_change, points_change, source_type, description)
         SELECT user_id, 20, 5, 'streak_bonus', 'Daily Target Achieved (+80%)! Great job!'
         FROM temp_user_stats
@@ -364,7 +375,7 @@ BEGIN
                 WHEN stats.last_active_date < ((now() AT TIME ZONE coalesce(stats.timezone, 'Asia/Jakarta'))::date - 1) THEN 0
                 WHEN stats.total_items > 0 AND stats.completion_rate >= 0.8 THEN stats.streak_current + 1 
                 WHEN stats.total_items > 0 AND stats.completion_rate < 0.8 THEN 0
-                ELSE stats.streak_current END, -- Pause logic jika total_items = 0
+                ELSE stats.streak_current END,
             streak_max = GREATEST(stats.streak_max, CASE WHEN stats.total_items > 0 AND stats.completion_rate >= 0.8 THEN stats.streak_current + 1 ELSE stats.streak_current END),
             last_reset_date = (now() AT TIME ZONE coalesce(stats.timezone, 'Asia/Jakarta'))::date
         FROM temp_user_stats stats
@@ -379,7 +390,6 @@ BEGIN
 
         -- =====================================================================
         -- STEP 5: HUKUMAN BOLOS TRAINING WORKOUT ⚔️
-        -- Misal: User schedule ada, tapi actual workout nggak ada
         -- =====================================================================
         INSERT INTO public.point_logs (user_id, xp_change, points_change, source_type, description)
         SELECT DISTINCT user_id, -150, -50, 'punishment', 'Missed Scheduled Workout! Pemalas! 😤'
@@ -389,7 +399,7 @@ BEGIN
     END IF;
 
     -- =====================================================================
-    -- STEP 5: LOGIC MINGGUAN (RESET HARI SENIN)
+    -- STEP 6: LOGIC MINGGUAN (RESET HARI SENIN)
     -- =====================================================================
     UPDATE public.tasks t
     SET is_completed = false, current_value = 0, last_completed_at = null
@@ -406,19 +416,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Penjadwalan ulang Cron yang aman
--- BUG FIX: unschedule dan schedule HARUS di-block terpisah.
--- Jika unschedule gagal (job belum ada), exception akan SKIP schedule juga!
+-- Penjadwalan Cron yang aman
 DO $$
 BEGIN
-    -- Block 1: Hapus jadwal lama (abaikan error jika belum ada)
     BEGIN
         PERFORM cron.unschedule('hourly-smart-global-reset');
     EXCEPTION WHEN OTHERS THEN
-        NULL; -- Abaikan jika job belum terdaftar
+        NULL;
     END;
 
-    -- Block 2: Daftarkan jadwal baru (SELALU dieksekusi)
     PERFORM cron.schedule(
         'hourly-smart-global-reset',
         '0 * * * *',
@@ -440,7 +446,7 @@ ALTER TABLE public.training_programs DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.program_schedules DISABLE ROW LEVEL SECURITY;
 
 -- =================================================================================
--- 8. SEED DATA (DATA BAWAAN APLIKASI - JANGAN SAMPAI HILANG!) 🎁
+-- 8. SEED DATA 🎁
 -- =================================================================================
 
 INSERT INTO public.difficulty_scales (scale_type, tier, target_value) VALUES
@@ -458,76 +464,52 @@ INSERT INTO public.exercise_library (id, name, target_muscle, scale_type, measur
 ('785459cf-b419-4b68-ab82-9f65be08ae74','Plank','Core','static_hold','seconds',NULL,false,NULL),
 ('382b049d-91a9-4111-a20e-0156bc369af4','Jogging','Cardio','cardio_run','meters',NULL,false,NULL),
 ('f91a14e6-382a-42b3-89ab-bc187b31a051','Burpees','Full Body','strength','reps',NULL,false,NULL),
-
 ('a1f0c1a1-0001-4a16-837e-401dee267d4c','Incline Push Up','Chest','strength','reps',NULL,false,NULL),
 ('a1f0c1a1-0002-4a16-837e-401dee267d4c','Decline Push Up','Chest','strength','reps',NULL,false,NULL),
 ('a1f0c1a1-0003-4a16-837e-401dee267d4c','Diamond Push Up','Chest','strength','reps',NULL,false,NULL),
 ('a1f0c1a1-0004-4a16-837e-401dee267d4c','Archer Push Up','Chest','strength','reps',NULL,false,NULL),
-
 ('a1f0c1a1-0005-4a16-837e-401dee267d4c','Pike Push Up','Shoulders','strength','reps',NULL,false,NULL),
 ('a1f0c1a1-0006-4a16-837e-401dee267d4c','Elevated Pike Push Up','Shoulders','strength','reps',NULL,false,NULL),
 ('a1f0c1a1-0007-4a16-837e-401dee267d4c','Pike Push Up Hold','Shoulders','static_hold','seconds',NULL,false,NULL),
-
 ('a1f0c1a1-0008-4a16-837e-401dee267d4c','Triceps Dips','Arms','strength','reps',NULL,false,NULL),
-
 ('a1f0c1a1-0009-4a16-837e-401dee267d4c','Bulgarian Split Squat','Legs','strength','reps',NULL,false,NULL),
 ('a1f0c1a1-0010-4a16-837e-401dee267d4c','Lunge','Legs','strength','reps',NULL,false,NULL),
 ('a1f0c1a1-0011-4a16-837e-401dee267d4c','Walking Lunge','Legs','endurance','reps',NULL,false,NULL),
-
 ('a1f0c1a1-0012-4a16-837e-401dee267d4c','Glute Bridge','Glutes','strength','reps',NULL,false,NULL),
 ('a1f0c1a1-0013-4a16-837e-401dee267d4c','Single Leg Glute Bridge','Glutes','strength','reps',NULL,false,NULL),
 ('a1f0c1a1-0014-4a16-837e-401dee267d4c','Donkey Kicks','Glutes','endurance','reps',NULL,false,NULL),
-
 ('a1f0c1a1-0015-4a16-837e-401dee267d4c','Calf Raises','Legs','endurance','reps',NULL,false,NULL),
 ('a1f0c1a1-0016-4a16-837e-401dee267d4c','Wall Sit','Legs','static_hold','seconds',NULL,false,NULL),
-
 ('a1f0c1a1-0017-4a16-837e-401dee267d4c','Superman Row','Back','strength','reps',NULL,false,NULL),
-
 ('a1f0c1a1-0018-4a16-837e-401dee267d4c','Leg Raise','Core','strength','reps',NULL,false,NULL),
 ('a1f0c1a1-0019-4a16-837e-401dee267d4c','Hanging Knee Raise','Core','strength','reps',NULL,false,NULL),
-
 ('a1f0c1a1-0020-4a16-837e-401dee267d4c','Sit Up','Core','strength','reps',NULL,false,NULL),
 ('a1f0c1a1-0021-4a16-837e-401dee267d4c','Bicycle Crunch','Core','endurance','seconds',NULL,false,NULL),
 ('a1f0c1a1-0022-4a16-837e-401dee267d4c','Russian Twist','Core','endurance','reps',NULL,false,NULL),
 ('a1f0c1a1-0023-4a16-837e-401dee267d4c','Side Plank Reach Through','Core','strength','reps',NULL,false,NULL),
 ('a1f0c1a1-0024-4a16-837e-401dee267d4c','Side Plank','Core','static_hold','seconds',NULL,false,NULL),
 ('a1f0c1a1-0025-4a16-837e-401dee267d4c','Hollow Body Hold','Core','static_hold','seconds',NULL,false,NULL),
-
 ('a1f0c1a1-0026-4a16-837e-401dee267d4c','Bird Dog','Core','endurance','reps',NULL,false,NULL),
-
 ('a1f0c1a1-0027-4a16-837e-401dee267d4c','Dynamic Stretching','Mobility','mobility','seconds',NULL,false,NULL),
 ('a1f0c1a1-0028-4a16-837e-401dee267d4c','Deep Squat Hold','Mobility','static_hold','seconds',NULL,false,NULL),
 ('a1f0c1a1-0029-4a16-837e-401dee267d4c','Shoulder Rolls','Shoulders','mobility','reps',NULL,false,NULL),
 ('a1f0c1a1-0030-4a16-837e-401dee267d4c','Breathing Exercise','Recovery','static_hold','seconds',NULL,false,NULL),
-
--- Tambahan Pasukan Pull (Punggung & Bisep)
 ('a1f0c1a1-0031-4a16-837e-401dee267d4c','Bodyweight Row','Back','strength','reps',NULL,false,NULL),
 ('a1f0c1a1-0032-4a16-837e-401dee267d4c','Chin Up','Back','strength','reps',NULL,false,NULL),
 ('a1f0c1a1-0033-4a16-837e-401dee267d4c','Muscle Up','Back','power','reps',NULL,false,NULL),
 ('a1f0c1a1-0034-4a16-837e-401dee267d4c','Front Lever','Back','static_hold','seconds',NULL,false,NULL),
-
--- Tambahan Dips & Handstand (Dada, Bahu, Trisep)
 ('a1f0c1a1-0035-4a16-837e-401dee267d4c','Parallel Bar Dips','Chest','strength','reps',NULL,false,NULL),
 ('a1f0c1a1-0036-4a16-837e-401dee267d4c','Handstand Hold','Shoulders','static_hold','seconds',NULL,false,NULL),
 ('a1f0c1a1-0037-4a16-837e-401dee267d4c','Handstand Push Up','Shoulders','strength','reps',NULL,false,NULL),
-
--- Tambahan Skill Core & Kaki Advanced
 ('a1f0c1a1-0038-4a16-837e-401dee267d4c','L-Sit','Core','static_hold','seconds',NULL,false,NULL),
 ('a1f0c1a1-0039-4a16-837e-401dee267d4c','Pistol Squat','Legs','strength','reps',NULL,false,NULL),
-
--- Tambahan Cardio / Conditioning (Bisa di rumah)
 ('a1f0c1a1-0040-4a16-837e-401dee267d4c','Jumping Jacks','Cardio','endurance','seconds',NULL,false,NULL),
 ('a1f0c1a1-0041-4a16-837e-401dee267d4c','Mountain Climbers','Cardio','endurance','seconds',NULL,false,NULL),
 ('a1f0c1a1-0042-4a16-837e-401dee267d4c','Jump Rope','Cardio','endurance','seconds',NULL,false,NULL),
-
-
--- Tambahan Variasi Latihan Pernapasan (Recovery & Fokus)
 ('a1f0c1a1-0043-4a16-837e-401dee267d4c','Box Breathing','Recovery','static_hold','seconds',NULL,false,NULL),
 ('a1f0c1a1-0044-4a16-837e-401dee267d4c','Diaphragmatic Breathing','Recovery','static_hold','seconds',NULL,false,NULL),
 ('a1f0c1a1-0045-4a16-837e-401dee267d4c','4-7-8 Breathing','Recovery','static_hold','seconds',NULL,false,NULL),
 ('a1f0c1a1-0046-4a16-837e-401dee267d4c','Wim Hof Breathing','Recovery','static_hold','seconds',NULL,false,NULL),
-
--- Tambahan Latihan Apnea & Freediving (Dry Training)
 ('a1f0c1a1-0047-4a16-837e-401dee267d4c','Dry Static Apnea','Recovery','static_hold','seconds',NULL,false,NULL),
 ('a1f0c1a1-0048-4a16-837e-401dee267d4c','CO2 Tolerance Table','Recovery','static_hold','seconds',NULL,false,NULL),
 ('a1f0c1a1-0049-4a16-837e-401dee267d4c','O2 Deprivation Table','Recovery','static_hold','seconds',NULL,false,NULL),
@@ -554,188 +536,3 @@ INSERT INTO public.tier_rewards (tier, xp_reward, points_reward) VALUES
 ON CONFLICT DO NOTHING;
 
 -- DONE! 🎉
-
-
-
-
--- =========================================================================
--- MANTRA 1: UPDATE TRIGGER TASK AGAR BISA "TUTUP MATA" SAAT RESET SISTEM
--- =========================================================================
-CREATE OR REPLACE FUNCTION public.handle_task_completion() RETURNS TRIGGER AS $$
-DECLARE
-    reward_data jsonb;
-    is_system_reset text;
-BEGIN
-    -- 🕵️‍♂️ CEK TANDA PENGENAL: Apakah aksi ini dilakukan oleh Cron Job?
-    is_system_reset := current_setting('bitmove.is_resetting', true);
-    
-    -- Jika ini dari cron reset, LANGSUNG KELUAR! Abaikan logika nambah/ngurangin point!
-    IF is_system_reset = 'true' THEN
-        RETURN NEW;
-    END IF;
-
-    -- Logika normal saat USER manual klik complete / undo
-    IF (NEW.is_completed = true AND OLD.is_completed = false) THEN
-        reward_data := public.calculate_task_reward(NEW.priority, NEW.frequency, NEW.is_custom);
-        INSERT INTO public.point_logs (user_id, xp_change, points_change, source_type, description)
-        VALUES (NEW.user_id, (reward_data->>'xp')::int, (reward_data->>'points')::int, 'task', 'Completed: ' || NEW.title);
-    ELSIF (NEW.is_completed = false AND OLD.is_completed = true) THEN
-        reward_data := public.calculate_task_reward(NEW.priority, NEW.frequency, NEW.is_custom);
-        INSERT INTO public.point_logs (user_id, xp_change, points_change, source_type, description)
-        VALUES (NEW.user_id, -(reward_data->>'xp')::int, -(reward_data->>'points')::int, 'task', 'Undo: ' || NEW.title);
-    END IF;
-    
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-
--- =========================================================================
--- MANTRA 2: UPDATE GLOBAL RESET CRON JOB DENGAN FITUR "MODE SILENT"
--- =========================================================================
-CREATE OR REPLACE FUNCTION public.handle_smart_global_reset() RETURNS void AS $$
-BEGIN
-    -- 🤫 AKTIFKAN MODE SILENT: Beritahu seluruh sistem database bahwa kita sedang melakukan Reset Global
-    PERFORM set_config('bitmove.is_resetting', 'true', true);
-
-    -- STEP 1: Kumpulkan user yang butuh di-reset HARI INI berdasarkan zona waktu mereka
-    CREATE TEMP TABLE temp_users_to_reset ON COMMIT DROP AS
-    SELECT id, streak_current, streak_max, last_active_date, timezone
-    FROM public.profiles
-    WHERE (now() AT TIME ZONE coalesce(timezone, 'Asia/Jakarta'))::date > last_reset_date;
-
-    IF (SELECT count(*) FROM temp_users_to_reset) > 0 THEN
-        
-        -- =====================================================================
-        -- STEP 2: EKSEKUSI HUKUMAN (PUNISHMENT) HARDCORE ASLI MILIKMU ⚔️
-        -- =====================================================================
-        
-        -- A. Macro Punishment (-200) untuk Full Skip Day
-        INSERT INTO public.point_logs (user_id, xp_change, points_change, source_type, description)
-        SELECT u.id, 0, -200, 'punishment', 'Full Skip Day Penalty 😭'
-        FROM temp_users_to_reset u
-        WHERE u.last_active_date < ((now() AT TIME ZONE coalesce(u.timezone, 'Asia/Jakarta'))::date - 1);
-
-        -- B. Micro Punishment (-50) untuk setiap Task "High" yang dilewatkan
-        INSERT INTO public.point_logs (user_id, xp_change, points_change, source_type, description)
-        SELECT t.user_id, 0, -50, 'punishment', 'Missed High Task: ' || t.title
-        FROM public.tasks t
-        JOIN temp_users_to_reset u ON u.id = t.user_id
-        WHERE t.frequency = 'Daily' 
-          AND t.priority = 'High' 
-          AND t.is_completed = false;
-
-        -- =====================================================================
-        -- STEP 3: EVALUASI STREAK & BONUS GABUNGAN 🏆 (Daily Quests + Training)
-        -- =====================================================================
-        
-        -- Kumpulkan metrik gabungan (Quests + Workouts) ke dalam temp table
-        CREATE TEMP TABLE temp_user_stats ON COMMIT DROP AS
-        SELECT u.id as user_id, 
-               u.streak_current,
-               u.streak_max,
-               u.last_active_date,
-               u.timezone,
-               COUNT(t.id) + COALESCE(sched.has_schedule, 0) as total_items,
-               COALESCE(
-                   (COUNT(CASE WHEN t.is_completed THEN 1 END) + COALESCE(wact.has_workout, 0))::float / 
-                   NULLIF(COUNT(t.id) + COALESCE(sched.has_schedule, 0), 0)::float, 
-                   0.0
-               ) as completion_rate,
-               COALESCE(sched.has_schedule, 0) as has_schedule,
-               COALESCE(wact.has_workout, 0) as has_workout
-        FROM temp_users_to_reset u
-        LEFT JOIN public.tasks t ON t.user_id = u.id AND t.frequency = 'Daily'
-        -- Cek apakah user punya jadwal workout di hari sebelum reset (kemarin)
-        LEFT JOIN LATERAL (
-            SELECT 1 as has_schedule
-            FROM public.training_programs tp
-            JOIN public.program_schedules ps ON ps.program_id = tp.id
-                AND ps.day_of_week = EXTRACT(ISODOW FROM ((now() AT TIME ZONE coalesce(u.timezone, 'Asia/Jakarta'))::date - interval '1 day'))
-                AND ps.week_number = (
-                    FLOOR(
-                        EXTRACT(DAY FROM (
-                            ((now() AT TIME ZONE coalesce(u.timezone, 'Asia/Jakarta'))::date - interval '1 day') - tp.start_date::timestamp
-                        ))::numeric / 7
-                    )::int % tp.total_weeks
-                ) + 1
-            WHERE tp.user_id = u.id AND tp.is_active = true
-            LIMIT 1
-        ) sched ON true
-        -- Cek apakah user beneran melakukan workout yang 'completed' di hari sebelum reset (kemarin)
-        LEFT JOIN LATERAL (
-            SELECT 1 as has_workout
-            FROM public.workouts w
-            WHERE w.user_id = u.id
-              AND w.status = 'completed'
-              AND (w.ended_at AT TIME ZONE coalesce(u.timezone, 'Asia/Jakarta'))::date = 
-                  ((now() AT TIME ZONE coalesce(u.timezone, 'Asia/Jakarta'))::date - interval '1 day')::date
-            LIMIT 1
-        ) wact ON true
-        GROUP BY u.id, u.streak_current, u.streak_max, u.last_active_date, u.timezone, sched.has_schedule, wact.has_workout;
-
-        -- Bonus Streak (+20 XP, +5 Points) jika Load > 0 & >= 80% completion rate (Quests + Training)
-        INSERT INTO public.point_logs (user_id, xp_change, points_change, source_type, description)
-        SELECT user_id, 20, 5, 'streak_bonus', 'Daily Target Achieved (+80%)! Great job!'
-        FROM temp_user_stats
-        WHERE total_items > 0 AND completion_rate >= 0.8;
-
-        -- UPDATE Profil: Streak & last_reset_date
-        UPDATE public.profiles p
-        SET 
-            streak_current = CASE 
-                WHEN stats.last_active_date < ((now() AT TIME ZONE coalesce(stats.timezone, 'Asia/Jakarta'))::date - 1) THEN 0
-                WHEN stats.total_items > 0 AND stats.completion_rate >= 0.8 THEN stats.streak_current + 1 
-                WHEN stats.total_items > 0 AND stats.completion_rate < 0.8 THEN 0
-                ELSE stats.streak_current END, -- Pause logic jika total_items = 0
-            streak_max = GREATEST(stats.streak_max, CASE WHEN stats.total_items > 0 AND stats.completion_rate >= 0.8 THEN stats.streak_current + 1 ELSE stats.streak_current END),
-            last_reset_date = (now() AT TIME ZONE coalesce(stats.timezone, 'Asia/Jakarta'))::date
-        FROM temp_user_stats stats
-        WHERE p.id = stats.user_id;
-
-        -- =====================================================================
-        -- STEP 4: BERSIHKAN TASK HARIAN
-        -- =====================================================================
-        UPDATE public.tasks 
-        SET is_completed = false, current_value = 0, last_completed_at = null
-        WHERE frequency = 'Daily' AND user_id IN (SELECT id FROM temp_users_to_reset);
-
-        -- =====================================================================
-        -- STEP 5: HUKUMAN BOLOS TRAINING WORKOUT ⚔️
-        -- Misal: User schedule ada, tapi actual workout nggak ada
-        -- =====================================================================
-        INSERT INTO public.point_logs (user_id, xp_change, points_change, source_type, description)
-        SELECT DISTINCT user_id, -150, -50, 'punishment', 'Missed Scheduled Workout! Pemalas! 😤'
-        FROM temp_user_stats
-        WHERE has_schedule = 1 AND COALESCE(has_workout, 0) = 0;
-
-    END IF;
-
-    -- =====================================================================
-    -- STEP 5 (Mingguan): LOGIC MINGGUAN (RESET HARI SENIN)
-    -- =====================================================================
-    UPDATE public.tasks t
-    SET is_completed = false, current_value = 0, last_completed_at = null
-    FROM public.profiles p
-    WHERE t.user_id = p.id 
-      AND t.frequency = 'Weekly'
-      AND EXTRACT(ISODOW FROM (now() AT TIME ZONE coalesce(p.timezone, 'Asia/Jakarta'))::date) = 1
-      AND (now() AT TIME ZONE coalesce(p.timezone, 'Asia/Jakarta'))::date > p.last_weekly_reset;
-
-    UPDATE public.profiles
-    SET last_weekly_reset = (now() AT TIME ZONE coalesce(timezone, 'Asia/Jakarta'))::date
-    WHERE EXTRACT(ISODOW FROM (now() AT TIME ZONE coalesce(timezone, 'Asia/Jakarta'))::date) = 1
-      AND (now() AT TIME ZONE coalesce(timezone, 'Asia/Jakarta'))::date > last_weekly_reset;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-
-
-
--- 1. Tambah kolom polarity ke tabel tasks
-ALTER TABLE tasks
-  ADD COLUMN IF NOT EXISTS polarity TEXT NOT NULL DEFAULT 'POSITIVE';
-
--- 2. Tambah kolom polarity ke tabel task_library  
-ALTER TABLE task_library
-  ADD COLUMN IF NOT EXISTS polarity TEXT NOT NULL DEFAULT 'POSITIVE';

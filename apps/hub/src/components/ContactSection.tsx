@@ -1,46 +1,33 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { contactData } from "@/config/data";
 
 export default function ContactSection() {
   return (
-    <section
+    <motion.section
+      initial={{ y: 80, opacity: 0 }}
+      whileInView={{ y: 0, opacity: 1 }}
+      transition={{ duration: 1, ease: "easeOut" }}
+      viewport={{ once: true, amount: 0.5 }}
+      className="py-24 md:py-48 text-center max-w-2xl mx-auto mb-20"
       id="contact"
-      className="py-24 md:py-48 px-6 md:px-12 max-w-screen-2xl mx-auto flex flex-col md:flex-row items-start justify-between border-t border-outline-variant/20 overflow-hidden"
     >
-      <motion.div
-        className="max-w-xl"
-        initial={{ opacity: 0, y: 40 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-100px" }}
-        transition={{ duration: 0.85, ease: [0.22, 1, 0.36, 1] }}
+      <p className="font-mono text-[#4F46E5] dark:text-[#818CF8] text-sm mb-4">
+        {contactData.header}
+      </p>
+      <h2 className="text-4xl md:text-6xl font-bold text-[#334155] dark:text-[#F1F5F9] mb-6">
+        {contactData.title}
+      </h2>
+      <p className="text-[#64748B] dark:text-[#94A3B8] mb-12">
+        {contactData.description}
+      </p>
+      <a
+        className="inline-block border-2 border-[#4F46E5] dark:border-[#818CF8] text-[#4F46E5] dark:text-[#818CF8] px-10 py-5 font-mono text-sm rounded hover:bg-[#4F46E5]/10 dark:hover:bg-[#818CF8]/10 transition-all duration-300"
+        href={contactData.ctaLink}
       >
-        <h2 className="text-5xl md:text-6xl font-headline font-light mb-8">
-          Let&apos;s build <br />something great.
-        </h2>
-        <p className="text-lg md:text-xl font-light text-on-surface-variant leading-relaxed">
-          Always open to discussing new projects, creative ideas, or opportunities to
-          be part of your next big vision.
-        </p>
-      </motion.div>
-
-      <motion.div
-        className="mt-12 md:mt-0 flex flex-col space-y-6 items-start md:items-end"
-        initial={{ opacity: 0, y: 40 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-100px" }}
-        transition={{ duration: 0.85, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
-      >
-        <a
-          href="mailto:hello@roisanwr.me"
-          className="text-3xl md:text-4xl font-headline font-light hover:italic transition-all duration-300"
-        >
-          hello@roisanwr.me
-        </a>
-        <p className="font-label text-xs tracking-widest uppercase opacity-50">
-          Response time: 24-48 hours
-        </p>
-      </motion.div>
-    </section>
+        {contactData.ctaText}
+      </a>
+    </motion.section>
   );
 }

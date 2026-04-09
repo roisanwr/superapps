@@ -1,24 +1,24 @@
 import Navbar from "@/components/Navbar";
+import Sidebar from "@/components/Sidebar";
+import ParticleBackground from "@/components/ParticleBackground";
 import HeroSection from "@/components/HeroSection";
 import ProfileSection from "@/components/ProfileSection";
-import ToolkitsSection from "@/components/ToolkitsSection";
+import ExperienceSection from "@/components/ExperienceSection";
 import ProjectsSection from "@/components/ProjectsSection";
-import NarrativeSection from "@/components/NarrativeSection";
 import ContactSection from "@/components/ContactSection";
 import Footer from "@/components/Footer";
-import CustomCursor from "@/components/CustomCursor";
 
 export default function Home() {
   return (
     <>
-      <CustomCursor />
       <Navbar />
-      <main className="pt-32">
+      <Sidebar />
+      <main className="max-w-6xl mx-auto px-6 md:px-24">
+        <ParticleBackground />
         <HeroSection />
         <ProfileSection />
-        <ToolkitsSection />
+        <ExperienceSection />
         <ProjectsSection />
-        <NarrativeSection />
         <ContactSection />
       </main>
       <Footer />

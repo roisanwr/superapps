@@ -1,100 +1,91 @@
 "use client";
 
-import { useRef } from "react";
-import { motion, useScroll, useTransform } from "framer-motion";
-
-const lines = [
-  { text: "Logic.", italic: false },
-  { text: "Design.", italic: true },
-  { text: "Flow.", italic: false },
-];
-
-function MaskLine({ text, italic, delay }: { text: string; italic: boolean; delay: number }) {
-  return (
-    <div className="overflow-hidden">
-      <motion.div
-        initial={{ y: "110%" }}
-        animate={{ y: "0%" }}
-        transition={{ duration: 1.1, delay, ease: [0.22, 1, 0.36, 1] }}
-      >
-        <span className={italic ? "italic font-light opacity-80" : ""}>{text}</span>
-      </motion.div>
-    </div>
-  );
-}
+import { useEffect, useRef } from "react";
+import Typed from "typed.js";
+import { motion, Variants } from "framer-motion";
+import { heroData } from "@/config/data";
 
 export default function HeroSection() {
-  const ref = useRef<HTMLElement>(null);
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
-  const opacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
-  const y = useTransform(scrollYProgress, [0, 0.5], [0, -60]);
+  const el = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    const typed = new Typed(el.current, {
+      strings: heroData.typedStrings,
+      typeSpeed: 50,
+      backSpeed: 30,
+      backDelay: 2000,
+      loop: true,
+      showCursor: true,
+      cursorChar: "|",
+      autoInsertCss: true,
+    });
+
+    return () => {
+      typed.destroy();
+    };
+  }, []);
+
+  const containerVariants: Variants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.2,
+        delayChildren: 0.2,
+      },
+    },
+  };
+
+  const itemVariants: Variants = {
+    hidden: { y: 30, opacity: 0 },
+    visible: {
+      y: 0,
+      opacity: 1,
+      transition: { duration: 0.8, ease: "easeOut" },
+    },
+  };
 
   return (
-    <motion.section
-      ref={ref}
-      style={{ opacity, y }}
-      className="min-h-screen flex flex-col items-center justify-center px-6 relative overflow-hidden"
-    >
-      <div className="max-w-4xl w-full relative z-10 text-center">
-        <motion.div
-          className="absolute inset-0 bg-surface-container-low -m-12 -z-10 blur-3xl"
-          initial={{ opacity: 0, scale: 0.85 }}
-          animate={{ opacity: 0.6, scale: 1.1 }}
-          transition={{ duration: 2.5 }}
-        />
-
-        <motion.p
-          className="mb-6 font-label text-xs uppercase tracking-[0.45em] text-on-surface-variant opacity-0"
-          animate={{ opacity: 0.5 }}
-          transition={{ delay: 0.3, duration: 0.8 }}
-        >
-          Developer · Designer · Builder
-        </motion.p>
-
-        <h1 className="text-6xl md:text-8xl lg:text-9xl font-headline font-light tracking-tighter mb-8 md:mb-12 leading-[0.9]">
-          {lines.map((l, i) => (
-            <MaskLine key={l.text} {...l} delay={0.35 + i * 0.15} />
-          ))}
-        </h1>
-
-        <motion.div
-          className="mt-8 md:mt-12 max-w-xl mx-auto"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.0, duration: 0.9 }}
-        >
-          <p className="text-lg md:text-2xl font-light text-on-surface-variant leading-relaxed">
-            I craft digital experiences where clean code meets intentional design.
-            Minimalist aesthetics, maximum performance.
-          </p>
-
-          <div className="mt-12 md:mt-16 flex justify-center">
-            <motion.div
-              className="w-px bg-outline-variant"
-              initial={{ height: 0 }}
-              animate={{ height: "6rem" }}
-              transition={{ delay: 1.3, duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-            />
-          </div>
-        </motion.div>
-      </div>
-
-      {/* Scroll indicator */}
+    <section className="relative min-h-screen flex flex-col justify-center pt-24 md:pt-32 overflow-hidden">
       <motion.div
-        className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1.7, duration: 0.8 }}
+        className="space-y-5 hero-content relative z-10 w-full"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
       >
-        <span className="font-label text-[10px] uppercase tracking-[0.4em] text-on-surface-variant opacity-40">
-          Scroll
-        </span>
-        <motion.div
-          className="w-px h-10 bg-outline-variant origin-top"
-          animate={{ scaleY: [0, 1, 0] }}
-          transition={{ duration: 1.6, repeat: Infinity, repeatDelay: 0.4, ease: "easeInOut" }}
-        />
+        <motion.p
+          variants={itemVariants}
+          className="font-mono text-[#4F46E5] dark:text-[#818CF8] tracking-widest"
+        >
+          {heroData.greeting}
+        </motion.p>
+        <motion.h1
+          variants={itemVariants}
+          className="text-5xl md:text-8xl font-bold text-[#334155] dark:text-[#F1F5F9] tracking-tight"
+        >
+          {heroData.name}
+        </motion.h1>
+        <motion.h2
+          variants={itemVariants}
+          className="text-4xl md:text-7xl font-bold text-[#64748B] dark:text-[#94A3B8] tracking-tight h-[80px] md:h-[100px]"
+        >
+          I build <span ref={el} className="text-[#4F46E5] dark:text-[#818CF8]"></span>
+        </motion.h2>
+        <motion.p
+          variants={itemVariants}
+          className="max-w-xl text-lg md:text-xl text-[#64748B] dark:text-[#94A3B8] leading-relaxed"
+        >
+          {heroData.description}
+        </motion.p>
+        <motion.div variants={itemVariants} className="pt-10">
+          <a
+            href={heroData.ctaLink}
+            className="inline-block border-2 border-[#4F46E5] dark:border-[#818CF8] text-[#4F46E5] dark:text-[#818CF8] px-8 py-4 font-mono text-sm rounded hover:bg-[#4F46E5]/10 dark:hover:bg-[#818CF8]/10 transition-all duration-300"
+          >
+            {heroData.ctaText}
+          </a>
+        </motion.div>
       </motion.div>
-    </motion.section>
+    </section>
   );
 }

@@ -1,76 +1,78 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { siteConfig } from "@/config/data";
+import { clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
 
-const navLinks = [
-  { label: "Work", href: "#" },
-  { label: "About", href: "#profile" },
-  { label: "Contact", href: "#contact" },
-];
+function cn(...inputs: (string | undefined | null | false)[]) {
+  return twMerge(clsx(inputs));
+}
 
 export default function Navbar() {
-  const [scrolled, setScrolled] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [showNavbar, setShowNavbar] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
 
   useEffect(() => {
-    const handler = () => setScrolled(window.scrollY > 30);
-    window.addEventListener("scroll", handler, { passive: true });
-    return () => window.removeEventListener("scroll", handler);
+    setMounted(true);
   }, []);
 
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      if (currentScrollY > lastScrollY && currentScrollY > 80) {
+        setShowNavbar(false);
+      } else {
+        setShowNavbar(true);
+      }
+      setLastScrollY(Math.max(0, currentScrollY));
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [lastScrollY]);
+
+  if (!mounted) return null;
+
   return (
-    <motion.nav
-      initial={{ y: -80, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-      className={`fixed top-0 w-full z-50 transition-all duration-500 ${
-        scrolled
-          ? "bg-surface/90 backdrop-blur-xl border-b border-outline-variant/20"
-          : "bg-transparent border-b border-transparent"
-      }`}
+    <nav
+      className={cn(
+        "fixed top-0 w-full z-40 bg-white/80 dark:bg-[#0B1120]/80 backdrop-blur-md flex justify-between items-center px-6 py-4 md:px-12 transition-transform duration-300 ease-in-out",
+        showNavbar ? "translate-y-0" : "-translate-y-full"
+      )}
     >
-      <div className="flex justify-between items-center px-6 md:px-12 py-6 max-w-screen-2xl mx-auto">
-        <motion.a
-          href="#"
-          className="font-headline text-xl md:text-2xl font-light tracking-tighter"
-          whileHover={{ letterSpacing: "-0.06em" }}
-          transition={{ duration: 0.3 }}
+      <a
+        href="#"
+        className="group text-[#4F46E5] dark:text-[#818CF8] w-10 h-10 relative flex items-center justify-center transition-all duration-300 hover:-translate-y-1"
+      >
+        <svg
+          viewBox="0 0 100 100"
+          className="absolute inset-0 w-full h-full fill-none stroke-current"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         >
-          Architectural Editorial
-        </motion.a>
-
-        <div className="hidden md:flex items-center space-x-12 font-headline tracking-tight text-lg">
-          {navLinks.map(({ label, href }, i) => (
-            <motion.a
-              key={label}
-              href={href}
-              className="relative text-primary/60 hover:text-primary transition-colors duration-300"
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15 * i + 0.4, duration: 0.5 }}
-            >
-              {label}
-              <motion.span
-                className="absolute -bottom-0.5 left-0 h-px bg-primary"
-                initial={{ width: 0 }}
-                whileHover={{ width: "100%" }}
-                transition={{ duration: 0.25 }}
-              />
-            </motion.a>
-          ))}
-        </div>
-
-        <motion.button
-          className="bg-primary text-on-primary px-6 md:px-8 py-2 md:py-3 font-label text-xs uppercase tracking-widest hover:bg-primary-dim transition-all duration-300"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.7, duration: 0.5 }}
-          whileHover={{ letterSpacing: "0.2em" }}
-          whileTap={{ scale: 0.97 }}
-        >
-          Hire Me
-        </motion.button>
+          <polygon points="50 5, 90 27.5, 90 72.5, 50 95, 10 72.5, 10 27.5"></polygon>
+        </svg>
+        <span className="font-bold text-xl font-mono text-[#4F46E5] dark:text-[#818CF8]">
+          {siteConfig.name.charAt(0)}
+        </span>
+      </a>
+      <div className="hidden md:flex items-center gap-8">
+        {siteConfig.navLinks.map((link, i) => (
+          <a
+            key={link.name}
+            className="font-mono text-xs tracking-widest text-[#334155] dark:text-[#F1F5F9] hover:text-[#4F46E5] dark:hover:text-[#818CF8] transition-all duration-300"
+            href={link.href}
+          >
+            0{i + 1}. {link.name}
+          </a>
+        ))}
+        <button className="border border-[#4F46E5] dark:border-[#818CF8] text-[#4F46E5] dark:text-[#818CF8] px-4 py-2 font-mono text-xs rounded hover:bg-[#4F46E5]/10 dark:hover:bg-[#818CF8]/10 transition-all duration-300">
+          Resume
+        </button>
       </div>
-    </motion.nav>
+    </nav>
   );
 }

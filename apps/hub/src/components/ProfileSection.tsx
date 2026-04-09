@@ -1,111 +1,61 @@
 "use client";
 
-import { useRef } from "react";
-import { motion, useScroll, useTransform, Variants } from "framer-motion";
-
-const containerVariants: Variants = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.12 } },
-};
-
-const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 28 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.75, ease: [0.22, 1, 0.36, 1] } },
-};
+import { motion } from "framer-motion";
+import { aboutData } from "@/config/data";
 
 export default function ProfileSection() {
-  const imageRef = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({ target: imageRef, offset: ["start end", "end start"] });
-  const imageScale = useTransform(scrollYProgress, [0, 1], [1.08, 1.0]);
-
   return (
-    <section
-      id="profile"
-      className="py-24 md:py-48 px-6 md:px-12 max-w-screen-2xl mx-auto overflow-hidden"
+    <motion.section
+      initial={{ y: 80, opacity: 0 }}
+      whileInView={{ y: 0, opacity: 1 }}
+      transition={{ duration: 1, ease: "easeOut" }}
+      viewport={{ once: true, amount: 0.2 }}
+      className="py-24 md:py-32 scroll-mt-20"
+      id="about"
     >
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-12 md:gap-24 items-center">
-        {/* Photo */}
-        <motion.div
-          ref={imageRef}
-          className="md:col-span-5 relative"
-          initial={{ opacity: 0, x: -50 }}
-          whileInView={{ opacity: 1, x: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
-        >
-          <div className="w-full aspect-[3/4] bg-surface-container-low relative overflow-hidden group">
-            {/* Curtain reveal */}
-            <motion.div
-              className="absolute inset-0 bg-surface z-10 origin-top"
-              initial={{ scaleY: 1 }}
-              whileInView={{ scaleY: 0 }}
-              viewport={{ once: true, margin: "-100px" }}
-              transition={{ duration: 1.3, delay: 0.1, ease: [0.76, 0, 0.24, 1] }}
-            />
-            <motion.img
-              /* eslint-disable-next-line @next/next/no-img-element */
-              src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=1000&auto=format&fit=crop"
-              alt="Portrait of the Developer"
-              style={{ scale: imageScale }}
-              className="w-full h-full object-cover filter grayscale contrast-125 brightness-90 transition-transform duration-700 group-hover:scale-105"
-            />
-            {/* Corner accents */}
-            {[
-              "absolute top-4 left-4 w-4 h-px bg-primary/50",
-              "absolute top-4 left-4 w-px h-4 bg-primary/50",
-              "absolute bottom-4 right-4 w-4 h-px bg-primary/50",
-              "absolute bottom-4 right-4 w-px h-4 bg-primary/50",
-            ].map((cls, i) => (
-              <motion.div
-                key={i}
-                className={cls}
-                initial={{ opacity: 0 }}
-                whileInView={{ opacity: 1 }}
-                viewport={{ once: true }}
-                transition={{ delay: 1.3 + i * 0.1, duration: 0.4 }}
-              />
-            ))}
-          </div>
-        </motion.div>
-
-        {/* Text */}
-        <motion.div
-          className="md:col-span-7 space-y-8"
-          variants={containerVariants}
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-100px" }}
-        >
-          <motion.span variants={itemVariants} className="font-label text-xs tracking-widest text-primary block uppercase">
-            Behind the Screen
-          </motion.span>
-          <motion.h2 variants={itemVariants} className="text-4xl md:text-6xl font-headline font-light leading-tight">
-            I build the web, <br />
-            <span className="italic text-on-surface-variant">one pixel at a time.</span>
-          </motion.h2>
-          <motion.div variants={itemVariants} className="space-y-6 text-on-surface-variant font-light leading-relaxed md:text-lg max-w-2xl">
-            <p>
-              Hi, I&apos;m Roisan. I&apos;ve always believed that great software should feel effortless.
-              My goal isn&apos;t just to write code that works, but to build digital spaces that people
-              actually enjoy using. Think of it like architecture—a solid foundation, intuitive
-              navigation, and a beautiful facade.
-            </p>
-            <p>
-              Based in Indonesia, I spend my days turning complex problems into elegant, scalable
-              web applications. Whether it&apos;s crafting a buttery-smooth animation or optimizing a
-              database query, I sweat the small stuff so the end user doesn&apos;t have to.
-            </p>
-          </motion.div>
-          <motion.div variants={itemVariants} className="pt-8">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Signature_of_John_Hancock.svg"
-              alt="Signature"
-              className="h-12 md:h-16 opacity-60 filter contrast-200 grayscale"
-            />
-          </motion.div>
-        </motion.div>
+      <div className="flex items-center gap-4 mb-10">
+        <h3 className="text-2xl md:text-3xl font-bold text-[#334155] dark:text-[#F1F5F9] flex items-center">
+          <span className="font-mono text-[#4F46E5] dark:text-[#818CF8] text-xl mr-2">
+            01.
+          </span>{" "}
+          About Me
+        </h3>
+        <div className="h-[1px] bg-[#E2E8F0] dark:bg-[#334155] flex-grow max-w-xs"></div>
       </div>
-    </section>
+      <div className="grid md:grid-cols-5 gap-12">
+        <div className="md:col-span-3 space-y-4 text-[#64748B] dark:text-[#94A3B8] leading-relaxed">
+          {aboutData.paragraphs.map((text, i) => (
+            <p key={i}>{text}</p>
+          ))}
+          <p>Here are a few technologies I’ve been working with recently:</p>
+          <ul className="grid grid-cols-2 font-mono text-xs gap-2 list-none mt-4">
+            {aboutData.technologies.map((tech) => (
+              <li key={tech} className="flex items-center gap-2">
+                <span className="text-[#4F46E5] dark:text-[#818CF8] text-[10px]">
+                  ▹
+                </span>{" "}
+                {tech}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="md:col-span-2 flex justify-center">
+          <div className="relative group max-w-[300px] w-full">
+            {/* The image wrapper with a solid background to protect against dark voids */}
+            <div className="relative bg-white dark:bg-slate-200 rounded overflow-hidden z-10">
+              <img
+                alt="Profile"
+                className="grayscale hover:grayscale-0 transition-all duration-500 object-cover w-full h-[350px]"
+                src={aboutData.profileImage}
+              />
+              <div className="absolute inset-0 bg-[#4F46E5]/10 dark:bg-[#818CF8]/10 group-hover:opacity-0 transition-opacity duration-300 pointer-events-none"></div>
+            </div>
+            
+            {/* The decorative frame rendered ON TOP so it crosses the image reliably in both modes */}
+            <div className="absolute inset-0 border-2 border-[#4F46E5] dark:border-[#818CF8] rounded translate-x-5 translate-y-5 group-hover:translate-x-3 group-hover:translate-y-3 transition-transform duration-300 pointer-events-none z-20"></div>
+          </div>
+        </div>
+      </div>
+    </motion.section>
   );
 }

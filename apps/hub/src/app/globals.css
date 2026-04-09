@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+:root {
+  --background: #fdfdfd;
+  --foreground: #0a0a0a;
+  --accent: #3b82f6; /* Blue 500 */
+  --accent-glow: rgba(59, 130, 246, 0.5);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #050508;
+    --foreground: #f4f4f5;
+    --accent: #3b82f6; /* Keep neon blue */
+    --accent-glow: rgba(59, 130, 246, 0.4);
+  }
+}
+
+/* Force dark mode by default for premium feel, but allow system if user has explicit light mode, well actually let's just make it dark */
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), sans-serif;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--accent);
+  color: white;
+}

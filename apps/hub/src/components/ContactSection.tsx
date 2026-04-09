@@ -1,14 +1,15 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Github, Linkedin, Mail, Twitter } from "lucide-react";
+import { Mail } from "lucide-react";
+import { FaGithub, FaLinkedin, FaTwitter } from "react-icons/fa6";
 import Link from "next/link";
 
 export default function ContactSection() {
   const socials = [
-    { icon: <Github className="w-5 h-5" />, href: "#", name: "GitHub" },
-    { icon: <Linkedin className="w-5 h-5" />, href: "#", name: "LinkedIn" },
-    { icon: <Twitter className="w-5 h-5" />, href: "#", name: "Twitter" },
+    { icon: <FaGithub className="w-5 h-5" />, href: "#", name: "GitHub" },
+    { icon: <FaLinkedin className="w-5 h-5" />, href: "#", name: "LinkedIn" },
+    { icon: <FaTwitter className="w-5 h-5" />, href: "#", name: "Twitter" },
     { icon: <Mail className="w-5 h-5" />, href: "#", name: "Email" },
   ];
 
@@ -26,7 +27,7 @@ export default function ContactSection() {
           transition={{ duration: 0.5 }}
           className="p-10 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-md"
         >
-          <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">Let's Connect</h2>
+          <h2 className="text-3xl md:text-5xl font-bold tracking-tight mb-4">Let&apos;s Connect</h2>
           <p className="text-zinc-400 text-lg mb-8">
             Punya penawaran menarik atau sekadar ingin menyapa? Jangan ragu untuk menghubungi.
           </p>

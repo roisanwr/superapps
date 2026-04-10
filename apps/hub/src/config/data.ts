@@ -26,7 +26,7 @@ export const heroData = {
   ],
   description:
     "I’m a software engineer specializing in building (and occasionally designing) exceptional digital experiences. Currently, I’m focused on building accessible, human-centered products at Upstatement.",
-  ctaText: "Check out my course!",
+  ctaText: "Find more about me!",
   ctaLink: "https://brittanychiang.com",
 };
 
@@ -43,8 +43,7 @@ export const aboutData = {
     "Node.js",
     "WordPress",
   ],
-  profileImage:
-    "https://lh3.googleusercontent.com/aida-public/AB6AXuAc2RoS4qW-GHOCvBwFsQOqavFkuOS5IfD3exHLXgcTmehgu9JWPne7lZ7z3tPwqHPWc3odE6Tzn0qVlmHFfyOGx1gZSO0sTEorKWLTfhMYOqN6bv4zE07H3qd-0wjtu-4cmcZSt82oaDmRLqbwy78S0Wa_6nC_1iUpZwKLReoQM6FWHOJpNxet1sRNIfIDmnXkSvfqnP-6x8uaB87GorMc036fcHK0SebpjMT_9fUgsL0gdCCUMj10XoaMZ0Z3XQD1zlDckN7hRIs",
+  profileImage: "/images/fotoku.png",
 };
 
 export const experienceData = [

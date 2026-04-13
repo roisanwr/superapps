@@ -73,7 +73,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Wallet tidak ditemukan" }, { status: 404 });
     }
 
-    const updated = await updateWallet(id, { name, type });
+    const updated = await updateWallet(id, user.sub, { name, type });
     return NextResponse.json({ success: true, data: updated });
   } catch (error: unknown) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
@@ -98,7 +98,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Wallet tidak ditemukan" }, { status: 404 });
     }
 
-    await deleteWallet(id);
+    await deleteWallet(id, user.sub);
     return NextResponse.json({ success: true, message: "Dompet berhasil dihapus!" });
   } catch (error: unknown) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") {

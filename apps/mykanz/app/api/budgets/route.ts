@@ -79,8 +79,8 @@ export async function POST(req: Request) {
     }
 
     await createBudget(
+      user.sub,
       {
-        userId: user.sub,
         amount: String(amount),
         period,
         startDate,
@@ -119,16 +119,16 @@ export async function DELETE(req: Request) {
       );
     }
 
-    const budget = await getBudgetById(id);
+    const budgetInfo = await getBudgetById(id, user.sub);
 
-    if (!budget || budget.userId !== user.sub) {
+    if (!budgetInfo || budgetInfo.budget.userId !== user.sub) {
       return NextResponse.json(
         { error: "Anggaran tidak ditemukan." },
         { status: 404 }
       );
     }
 
-    await deleteBudget(id);
+    await deleteBudget(id, user.sub);
 
     return NextResponse.json(
       { success: true, message: "Anggaran berhasil dihapus!" },

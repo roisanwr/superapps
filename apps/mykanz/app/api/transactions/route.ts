@@ -65,8 +65,7 @@ export async function POST(req: Request) {
         );
       }
 
-      await createTransferTransaction({
-        userId: user.sub,
+      await createTransferTransaction(user.sub, {
         fromWalletId: wallet_id,
         toWalletId: to_wallet_id,
         amount: String(amount),
@@ -74,8 +73,7 @@ export async function POST(req: Request) {
         transactionDate: txDate,
       });
     } else {
-      await createFiatTransaction({
-        userId: user.sub,
+      await createFiatTransaction(user.sub, {
         walletId: wallet_id,
         categoryId: category_id || null,
         transactionType: transaction_type,
@@ -112,12 +110,12 @@ export async function DELETE(req: Request) {
     }
 
     // Pastikan transaksi milik user ini
-    const tx = await getFiatTransactionById(id);
+    const tx = await getFiatTransactionById(id, user.sub);
     if (!tx || tx.userId !== user.sub) {
       return NextResponse.json({ error: "Transaksi tidak ditemukan" }, { status: 404 });
     }
 
-    await deleteFiatTransaction(id);
+    await deleteFiatTransaction(id, user.sub);
     return NextResponse.json({ success: true, message: "Transaksi berhasil dihapus!" });
   } catch (error: unknown) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") {

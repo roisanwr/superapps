@@ -1,35 +1,63 @@
-import { auth } from '@/lib/auth';
-import prisma from '@/lib/prisma';
+import { db } from '@/lib/db';
+import { getCurrentUser } from '@/lib/session';
+import { categories as categoriesTable, budgets as budgetsTable, budgetCategories, fiatTransactions } from '@woilaa/db-mykanz/schema/schema';
+import { eq, and, isNull, asc, desc, inArray, gte, lte, sum, sql } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 import { PieChart, ShieldAlert, TrendingDown } from 'lucide-react';
 import AddBudgetModal from '@/components/AddBudgetModal';
 import BudgetCardActions from '@/components/BudgetCardActions';
 
 export default async function BudgetsPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
   
-  const userId = session.user.id;
+  const userId = user.sub;
 
   // 1. Fetch categories for the modal
-  const categories = await prisma.categories.findMany({ 
-    where: { user_id: userId, deleted_at: null },
-    orderBy: { name: 'asc' } 
-  });
+  const categories = await db.select().from(categoriesTable).where(
+    and(eq(categoriesTable.userId, userId), isNull(categoriesTable.deletedAt))
+  ).orderBy(asc(categoriesTable.name));
 
-  // 2. Fetch all budgets including their budget_categories connecting table
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const budgets = await (prisma.budgets as any).findMany({ 
-    where: { user_id: userId },
-    orderBy: { start_date: 'desc' },
-    include: {
-      budget_categories: {
-        include: {
-          categories: true
-        }
-      }
+  // 2. Fetch all budgets with their budget_categories
+  const budgetsRaw = await db.select({
+    id: budgetsTable.id,
+    amount: budgetsTable.amount,
+    period: budgetsTable.period,
+    startDate: budgetsTable.startDate,
+    endDate: budgetsTable.endDate,
+    createdAt: budgetsTable.createdAt,
+    categoryId: categoriesTable.id,
+    categoryName: categoriesTable.name,
+    budgetCategoryId: budgetCategories.id,
+  })
+  .from(budgetsTable)
+  .leftJoin(budgetCategories, eq(budgetsTable.id, budgetCategories.budgetId))
+  .leftJoin(categoriesTable, eq(budgetCategories.categoryId, categoriesTable.id))
+  .where(eq(budgetsTable.userId, userId))
+  .orderBy(desc(budgetsTable.startDate));
+
+  // Group by budget id
+  const budgetsMap = new Map<string, any>();
+  for (const row of budgetsRaw) {
+    if (!budgetsMap.has(row.id)) {
+      budgetsMap.set(row.id, {
+        id: row.id,
+        amount: row.amount,
+        period: row.period,
+        start_date: row.startDate,
+        end_date: row.endDate,
+        created_at: row.createdAt,
+        budget_categories: []
+      });
     }
-  }) as any[];
+    if (row.categoryId) {
+      budgetsMap.get(row.id).budget_categories.push({
+        category_id: row.categoryId,
+        categories: { name: row.categoryName }
+      });
+    }
+  }
+  const budgets: any[] = Array.from(budgetsMap.values());
 
   // 3. For each budget, fetch total transactions within its date range for its mapped categories
   const processedBudgets = await Promise.all(
@@ -40,21 +68,18 @@ export default async function BudgetsPage() {
       
       // Only fetch if there are categories assigned
       if (categoryIds.length > 0) {
-        const txs = await prisma.fiat_transactions.aggregate({
-          where: {
-            user_id: userId,
-            transaction_type: 'PENGELUARAN',
-            category_id: { in: categoryIds },
-            transaction_date: {
-              gte: budget.start_date,
-              lte: budget.end_date
-            }
-          },
-          _sum: {
-            amount: true
-          }
-        });
-        usedAmount = Number(txs._sum.amount || 0);
+        const txsResult = await db.select({
+          total: sql<number>`COALESCE(SUM(${fiatTransactions.amount}), 0)`
+        }).from(fiatTransactions).where(
+          and(
+            eq(fiatTransactions.userId, userId),
+            eq(fiatTransactions.transactionType, 'PENGELUARAN'),
+            inArray(fiatTransactions.categoryId, categoryIds),
+            gte(fiatTransactions.transactionDate, new Date(budget.start_date)),
+            lte(fiatTransactions.transactionDate, new Date(budget.end_date))
+          )
+        );
+        usedAmount = Number(txsResult[0]?.total || 0);
       }
 
       const limit = Number(budget.amount);

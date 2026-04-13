@@ -10,7 +10,7 @@ import {
 import { requireUser } from "@/lib/session";
 import type { categoryTypeEnum } from "@woilaa/db-mykanz";
 
-type CategoryType = "INCOME" | "EXPENSE" | "TRANSFER";
+type CategoryType = "PEMASUKAN" | "PENGELUARAN" | "TRANSFER";
 
 export async function POST(req: Request) {
   try {
@@ -32,8 +32,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const newCategory = await createCategory({
-      userId: user.sub,
+    const newCategory = await createCategory(user.sub, {
       name: name.trim(),
       type,
     });
@@ -79,7 +78,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Kategori tidak ditemukan" }, { status: 404 });
     }
 
-    const updated = await updateCategory(id, { name: name.trim(), type });
+    const updated = await updateCategory(id, user.sub, { name: name.trim(), type });
     return NextResponse.json({ success: true, data: updated });
   } catch (error: unknown) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
@@ -104,7 +103,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Kategori tidak ditemukan" }, { status: 404 });
     }
 
-    await deleteCategory(id);
+    await deleteCategory(id, user.sub);
     return NextResponse.json({ success: true, message: "Kategori berhasil dihapus!" });
   } catch (error: unknown) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") {

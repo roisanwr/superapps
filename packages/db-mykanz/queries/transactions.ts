@@ -31,7 +31,7 @@ export async function createFiatTransaction(
 
   // Validasi kategori strict sesuai tipe transaksi
   if (data.categoryId) {
-    const catType = data.transactionType === "PEMASUKAN" ? "INCOME" : "EXPENSE";
+    const catType = data.transactionType === "PEMASUKAN" ? "PEMASUKAN" : "PENGELUARAN";
     const catValid = await validateCategoryType(data.categoryId, userId, catType);
     if (!catValid.valid) throw new Error(catValid.reason);
   }

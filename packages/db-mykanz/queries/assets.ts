@@ -240,7 +240,7 @@ export async function getPortfolioWithDetails(userId: string): Promise<
     `
   );
 
-  return (result.rows as any[]).map((row) => ({
+  return (result as any[]).map((row) => ({
     portfolio: {
       id: row.portfolio_id,
       userId,

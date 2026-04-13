@@ -1,6 +1,8 @@
 // app/(dashboard)/portfolios/page.tsx
-import { auth } from '@/lib/auth';
-import prisma from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/session';
+import { db } from '@/lib/db';
+import { assets as assetsTable, userPortfolios, assetTransactions } from '@woilaa/db-mykanz';
+import { eq, desc } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -34,30 +36,65 @@ const formatUnit = (v: string | number | null | undefined, unitName?: string | n
 };
 
 export default async function PortfolioDashboardPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect('/login');
-  const userId = session.user.id;
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+  const userId = user.sub;
 
   // 1. Fetch all assets with their portfolio position
-  const assets = await prisma.assets.findMany({
-    where: { user_id: userId },
-    include: {
-      user_portfolios: { where: { user_id: userId } }
-    },
-    orderBy: { created_at: 'asc' }
-  });
+  const assetsRaw = await db.select({
+    id: assetsTable.id,
+    name: assetsTable.name,
+    tickerSymbol: assetsTable.tickerSymbol,
+    assetType: assetsTable.assetType,
+    unitName: assetsTable.unitName,
+    portfolioTotalUnits: userPortfolios.totalUnits,
+    portfolioAvgPrice: userPortfolios.averageBuyPrice,
+  })
+  .from(assetsTable)
+  .leftJoin(userPortfolios, eq(assetsTable.id, userPortfolios.assetId))
+  .where(eq(assetsTable.userId, userId));
 
   // 2. Fetch recent investment transactions (last 8)
-  const recentTxs = await prisma.asset_transactions.findMany({
-    where: { user_id: userId },
-    orderBy: { transaction_date: 'desc' },
-    take: 8,
-    include: {
-      user_portfolios: {
-        include: { assets: { select: { name: true, ticker_symbol: true, unit_name: true, asset_type: true } } }
-      }
-    }
-  });
+  const recentTxsRaw = await db.select({
+    id: assetTransactions.id,
+    transactionType: assetTransactions.transactionType,
+    transactionDate: assetTransactions.transactionDate,
+    units: assetTransactions.units,
+    pricePerUnit: assetTransactions.pricePerUnit,
+    totalAmount: assetTransactions.totalAmount,
+    assetName: assetsTable.name,
+    ticker: assetsTable.tickerSymbol,
+    unitName: assetsTable.unitName,
+    assetType: assetsTable.assetType,
+    notes: assetTransactions.notes,
+  })
+  .from(assetTransactions)
+  .leftJoin(userPortfolios, eq(assetTransactions.portfolioId, userPortfolios.id))
+  .leftJoin(assetsTable, eq(userPortfolios.assetId, assetsTable.id))
+  .where(eq(assetTransactions.userId, userId))
+  .orderBy(desc(assetTransactions.transactionDate))
+  .limit(8);
+
+  // Transform for rendering compatibility (match old prisma shape)
+  const assets = assetsRaw.map((a: any) => ({
+    id: a.id,
+    name: a.name,
+    ticker_symbol: a.tickerSymbol,
+    asset_type: a.assetType,
+    unit_name: a.unitName,
+    user_portfolios: a.portfolioTotalUnits != null ? [{ total_units: a.portfolioTotalUnits, average_buy_price: a.portfolioAvgPrice }] : []
+  }));
+
+  const recentTxs = recentTxsRaw.map((t: any) => ({
+    id: t.id,
+    transaction_type: t.transactionType,
+    transaction_date: t.transactionDate,
+    units: t.units,
+    price_per_unit: t.pricePerUnit,
+    total_amount: t.totalAmount,
+    notes: t.notes,
+    user_portfolios: { assets: { name: t.assetName, ticker_symbol: t.ticker, unit_name: t.unitName, asset_type: t.assetType } }
+  }));
 
   // 3. Compute portfolio stats
   type AssetWithPortfolio = typeof assets[number];

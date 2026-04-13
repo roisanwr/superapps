@@ -103,7 +103,7 @@ export async function getPortfolioAllocation(userId: string): Promise<
     `
   );
 
-  return (result.rows as any[]).map((row) => ({
+  return (result as any[]).map((row) => ({
     assetType: row.asset_type,
     totalValue: row.total_value,
     percentage: row.percentage,
@@ -261,7 +261,7 @@ export async function getRealizedPnl(userId: string): Promise<
     `
   );
 
-  return (result.rows as any[]).map((row) => ({
+  return (result as any[]).map((row) => ({
     portfolioId: row.portfolio_id,
     assetName: row.asset_name,
     totalBought: row.total_bought,

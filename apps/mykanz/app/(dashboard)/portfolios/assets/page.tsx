@@ -1,5 +1,8 @@
-import { auth } from '@/lib/auth';
-import prisma from '@/lib/prisma';
+// app/(dashboard)/portfolios/assets/page.tsx
+import { db } from '@/lib/db';
+import { getCurrentUser } from '@/lib/session';
+import { assets as assetsTable, userPortfolios } from '@woilaa/db-mykanz';
+import { eq, desc } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 import { Rocket, Box, Database, TrendingUp, HelpCircle } from 'lucide-react';
 import AddAssetModal from '@/components/AddAssetModal';
@@ -30,18 +33,34 @@ function getAssetTypeName(type: string) {
 }
 
 export default async function PortfolioAssetsPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
 
-  const assets = await prisma.assets.findMany({
-    where: { user_id: session.user.id },
-    orderBy: { created_at: 'desc' },
-    include: {
-      user_portfolios: {
-        where: { user_id: session.user.id }
-      }
-    }
-  });
+  const assetsRaw = await db.select({
+    id: assetsTable.id,
+    name: assetsTable.name,
+    asset_type: assetsTable.assetType,
+    ticker_symbol: assetsTable.tickerSymbol,
+    unit_name: assetsTable.unitName,
+    portfolioTotalUnits: userPortfolios.totalUnits,
+    portfolioAvgPrice: userPortfolios.averageBuyPrice,
+  })
+  .from(assetsTable)
+  .leftJoin(userPortfolios, eq(assetsTable.id, userPortfolios.assetId))
+  .where(eq(assetsTable.userId, user.sub))
+  .orderBy(desc(assetsTable.createdAt));
+
+  const assets = assetsRaw.map((a: any) => ({
+    id: a.id,
+    name: a.name,
+    asset_type: a.asset_type,
+    ticker_symbol: a.ticker_symbol,
+    unit_name: a.unit_name,
+    user_portfolios: a.portfolioTotalUnits != null ? [{ 
+      total_units: Number(a.portfolioTotalUnits), 
+      average_buy_price: Number(a.portfolioAvgPrice) 
+    }] : []
+  }));
 
   // Calculate total active portfolio value (Estimasi)
   let totalPortfolioValue = 0;

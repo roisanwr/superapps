@@ -1,23 +1,24 @@
 // app/(dashboard)/categories/page.tsx
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth';
+import { db } from '@/lib/db';
+import { getCurrentUser } from '@/lib/session';
+import { categories } from '@woilaa/db-mykanz/schema/schema';
+import { eq, and, isNull, desc } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 import { Tags, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import AddCategoryModal from '@/components/AddCategoryModal';
 import CategoryCardActions from '@/components/CategoryCardActions';
 
 export default async function CategoriesPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
 
-  const categories = await prisma.categories.findMany({
-    where: { user_id: session.user.id, deleted_at: null },
-    orderBy: { created_at: 'desc' }
-  });
+  const categoriesList = await db.select().from(categories).where(
+    and(eq(categories.userId, user.sub), isNull(categories.deletedAt))
+  ).orderBy(desc(categories.createdAt));
 
-  type Category = typeof categories[number];
-  const pemasukan = categories.filter((c: Category) => c.type === 'PEMASUKAN');
-  const pengeluaran = categories.filter((c: Category) => c.type === 'PENGELUARAN');
+  type Category = typeof categoriesList[number];
+  const pemasukan = categoriesList.filter((c: Category) => c.type === 'PEMASUKAN');
+  const pengeluaran = categoriesList.filter((c: Category) => c.type === 'PENGELUARAN');
 
   const renderCategoryCard = (category: any) => (
     <div key={category.id} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 flex items-center justify-between hover:border-slate-300 dark:hover:border-slate-600 transition-colors group">

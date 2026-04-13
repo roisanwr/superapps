@@ -1,101 +1,79 @@
 // app/(dashboard)/transactions/page.tsx
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth';
+import { db } from '@/lib/db';
+import { getCurrentUser } from '@/lib/session';
+import { fiatTransactions, wallets as walletsTable, categories as categoriesTable } from '@woilaa/db-mykanz';
+import { eq, and, gte, lte, desc, ilike, or, isNull, aliasedTable } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 import AddTransactionModal from '@/components/AddTransactionModal';
 import TransactionList from '@/components/TransactionList';
 import TransactionFilters from '@/components/TransactionFilters';
 import { TrendingDown, TrendingUp, FilterX } from 'lucide-react';
-import { fiat_tx_type } from '@prisma/client';
 
 export default async function TransactionsPage(props: {
   searchParams: Promise<{ [key: string]: string | undefined }>
 }) {
-  const session = await auth();
-  if (!session?.user?.id) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
 
   const searchParams = await props.searchParams;
   const { type, categoryId, walletId, startDate, endDate, search, minAmount, maxAmount } = searchParams;
 
   // Fetch Wallets for the Add form & Filters
-  const wallets = await prisma.wallets.findMany({
-    where: { user_id: session.user.id, deleted_at: null },
-    select: { id: true, name: true, currency: true }
-  });
+  const wallets = await db.select({ id: walletsTable.id, name: walletsTable.name, currency: walletsTable.currency })
+    .from(walletsTable)
+    .where(and(eq(walletsTable.userId, user.sub), isNull(walletsTable.deletedAt)));
 
   // Fetch Categories for the Add form & Filters
-  const categories = await prisma.categories.findMany({
-    where: { user_id: session.user.id, deleted_at: null },
-    select: { id: true, name: true, type: true }
-  });
+  const categories = await db.select({ id: categoriesTable.id, name: categoriesTable.name, type: categoriesTable.type })
+    .from(categoriesTable)
+    .where(and(eq(categoriesTable.userId, user.sub), isNull(categoriesTable.deletedAt)));
 
-  // Build Dynamic Where Clause based on Filters
-  const whereClause: any = { user_id: session.user.id };
+  // Build conditions array for Drizzle
+  const conditions: any[] = [eq(fiatTransactions.userId, user.sub)];
 
-  if (type) {
-    whereClause.transaction_type = type as fiat_tx_type;
-  }
-  
-  if (categoryId && type !== 'TRANSFER') {
-    whereClause.category_id = categoryId;
-  }
+  if (type) conditions.push(eq(fiatTransactions.transactionType, type as any));
+  if (categoryId && type !== 'TRANSFER') conditions.push(eq(fiatTransactions.categoryId, categoryId));
+  if (walletId) conditions.push(or(eq(fiatTransactions.walletId, walletId), eq(fiatTransactions.toWalletId, walletId)));
+  if (startDate) conditions.push(gte(fiatTransactions.transactionDate, new Date(`${startDate}T00:00:00.000Z`)));
+  if (endDate) conditions.push(lte(fiatTransactions.transactionDate, new Date(`${endDate}T23:59:59.999Z`)));
+  if (search && search.trim()) conditions.push(ilike(fiatTransactions.description, `%${search.trim()}%`));
 
-  if (walletId) {
-    whereClause.OR = [
-      { wallet_id: walletId },
-      { to_wallet_id: walletId }
-    ];
-  }
+  // Fetch Transactions for List  
+  const toWalletsAlias = aliasedTable(walletsTable, 'toWallets');
+  const transactionsRaw = await db.select({
+    id: fiatTransactions.id,
+    transaction_type: fiatTransactions.transactionType,
+    transaction_date: fiatTransactions.transactionDate,
+    amount: fiatTransactions.amount,
+    exchange_rate: fiatTransactions.exchangeRate,
+    description: fiatTransactions.description,
+    categories: { name: categoriesTable.name, type: categoriesTable.type },
+    wallets_fiat_transactions_wallet_idTowallets: { name: walletsTable.name, currency: walletsTable.currency },
+    wallets_fiat_transactions_to_wallet_idTowallets: { name: toWalletsAlias.name, currency: toWalletsAlias.currency },
+  })
+  .from(fiatTransactions)
+  .leftJoin(categoriesTable, eq(fiatTransactions.categoryId, categoriesTable.id))
+  .leftJoin(walletsTable, eq(fiatTransactions.walletId, walletsTable.id))
+  .leftJoin(toWalletsAlias, eq(fiatTransactions.toWalletId, toWalletsAlias.id))
+  .where(and(...conditions))
+  .orderBy(desc(fiatTransactions.transactionDate))
+  .limit(100);
 
-  if (startDate || endDate) {
-    whereClause.transaction_date = {};
-    if (startDate) {
-      whereClause.transaction_date.gte = new Date(`${startDate}T00:00:00.000Z`);
-    }
-    if (endDate) {
-      whereClause.transaction_date.lte = new Date(`${endDate}T23:59:59.999Z`);
-    }
-  }
-
-  // Keyword search: match on description field (case-insensitive)
-  if (search && search.trim()) {
-    whereClause.description = { contains: search.trim(), mode: 'insensitive' };
-  }
-
-  // Amount range filter
-  if (minAmount || maxAmount) {
-    whereClause.amount = {};
-    if (minAmount) whereClause.amount.gte = parseFloat(minAmount);
-    if (maxAmount) whereClause.amount.lte = parseFloat(maxAmount);
-  }
-
-  // Fetch Transactions for List
-  const transactionsRaw = await prisma.fiat_transactions.findMany({
-    where: whereClause,
-    orderBy: { transaction_date: 'desc' },
-    take: 100, // Still limit to 100 on the UI
-    include: {
-      categories: { select: { name: true, type: true } },
-      wallets_fiat_transactions_wallet_idTowallets: { select: { name: true, currency: true } },
-      wallets_fiat_transactions_to_wallet_idTowallets: { select: { name: true, currency: true } }
-    }
-  });
-
-  // Prisma Decimals to Numbers to fix NextJS server/client serialization warnings
-  const transactions = transactionsRaw.map(tx => ({
+  // Convert Decimals to Numbers for serialization
+  const transactions = transactionsRaw.map((tx: any) => ({
     ...tx,
     amount: Number(tx.amount),
     exchange_rate: tx.exchange_rate ? Number(tx.exchange_rate) : null
   }));
 
-  // Calculate Simple Monthly Stats (Pemasukan vs Pengeluaran berdasarkan filter yang aktif)
+  // Calculate Simple Monthly Stats
   const totalIncome = transactions
-    .filter(tx => tx.transaction_type === 'PEMASUKAN')
-    .reduce((acc, curr) => acc + curr.amount, 0);
+    .filter((tx: any) => tx.transaction_type === 'PEMASUKAN')
+    .reduce((acc: number, curr: any) => acc + curr.amount, 0);
     
   const totalExpense = transactions
-    .filter(tx => tx.transaction_type === 'PENGELUARAN')
-    .reduce((acc, curr) => acc + curr.amount, 0);
+    .filter((tx: any) => tx.transaction_type === 'PENGELUARAN')
+    .reduce((acc: number, curr: any) => acc + curr.amount, 0);
 
   const formatRupiah = (angka: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka);
@@ -151,7 +129,7 @@ export default async function TransactionsPage(props: {
           Data Transaksi {transactions.length === 100 && <span className="text-orange-500 text-sm italic font-normal ml-2">(Max 100 data terbaru)</span>}
         </h3>
         
-        {Object.keys(whereClause).length > 1 && transactions.length === 0 ? (
+        {conditions.length > 1 && transactions.length === 0 ? (
            <div className="text-center py-12 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl">
               <FilterX className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
               <p className="text-slate-500 dark:text-slate-400 font-medium">Berdasarkan filter saat ini,<br/>Belum ada transaksi yang ditemukan.</p>

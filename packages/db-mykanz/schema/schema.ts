@@ -5,7 +5,7 @@ import {
   varchar,
   text,
   decimal,
-  timestamptz,
+  timestamp,
   uniqueIndex,
   index,
   unique,
@@ -31,8 +31,8 @@ export const fiatTxTypeEnum = pgEnum("fiat_tx_type", [
 
 // STRICT: satu kategori hanya untuk satu tipe transaksi
 export const categoryTypeEnum = pgEnum("category_type", [
-  "INCOME",
-  "EXPENSE",
+  "PEMASUKAN",
+  "PENGELUARAN",
   "TRANSFER",
 ]);
 
@@ -69,9 +69,9 @@ export const wallets = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     type: walletTypeEnum("type").notNull(),
     currency: varchar("currency", { length: 10 }).notNull().default("IDR"),
-    deletedAt: timestamptz("deleted_at"),
-    createdAt: timestamptz("created_at").defaultNow(),
-    updatedAt: timestamptz("updated_at").defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     userIdx: index("idx_wallets_user").on(table.userId).where(
@@ -93,9 +93,9 @@ export const categories = pgTable(
     name: varchar("name", { length: 100 }).notNull(),
     // STRICT: kategori hanya untuk satu tipe transaksi
     type: categoryTypeEnum("type").notNull(),
-    deletedAt: timestamptz("deleted_at"),
-    createdAt: timestamptz("created_at").defaultNow(),
-    updatedAt: timestamptz("updated_at").defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     uniqueUserCategory: unique().on(table.userId, table.name, table.type),
@@ -130,9 +130,9 @@ export const fiatTransactions = pgTable(
       "1.0"
     ),
     description: text("description"),
-    transactionDate: timestamptz("transaction_date").defaultNow(),
-    createdAt: timestamptz("created_at").defaultNow(),
-    updatedAt: timestamptz("updated_at").defaultNow(),
+    transactionDate: timestamp("transaction_date", { withTimezone: true }).defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     // Tidak boleh transfer ke wallet yang sama
@@ -161,10 +161,10 @@ export const budgets = pgTable("budgets", {
   userId: uuid("user_id").notNull(),
   amount: decimal("amount", { precision: 18, scale: 2 }).notNull(),
   period: varchar("period", { length: 20 }).notNull(),
-  startDate: timestamptz("start_date").notNull(),
-  endDate: timestamptz("end_date").notNull(),
-  createdAt: timestamptz("created_at").defaultNow(),
-  updatedAt: timestamptz("updated_at").defaultNow(),
+  startDate: timestamp("start_date", { withTimezone: true }).notNull(),
+  endDate: timestamp("end_date", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
 // Junction table: satu budget bisa link ke beberapa kategori (Hybrid)
@@ -220,8 +220,8 @@ export const assets = pgTable(
     unitName: varchar("unit_name", { length: 50 }).default("unit"),
     currency: varchar("currency", { length: 10 }).notNull().default("IDR"),
     priceSource: valuationSourceEnum("price_source").default("MANUAL"),
-    createdAt: timestamptz("created_at").defaultNow(),
-    updatedAt: timestamptz("updated_at").defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     // Aset global: unique per tipe + ticker
@@ -248,7 +248,7 @@ export const goals = pgTable(
     targetAmount: decimal("target_amount", { precision: 18, scale: 2 }).notNull(),
     // Manual update dari aplikasi — bukan trigger atau view
     currentAmount: decimal("current_amount", { precision: 18, scale: 2 }).default("0"),
-    deadline: timestamptz("deadline"),
+    deadline: timestamp("deadline", { withTimezone: true }),
     // Opsional: goal bisa berupa target kepemilikan aset (saham, kripto, dst)
     assetId: uuid("asset_id").references(() => assets.id, {
       onDelete: "cascade",
@@ -258,8 +258,8 @@ export const goals = pgTable(
       precision: 18,
       scale: 8,
     }).default("0"),
-    createdAt: timestamptz("created_at").defaultNow(),
-    updatedAt: timestamptz("updated_at").defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     userIdx: index("idx_goals_user").on(table.userId),
@@ -292,10 +292,10 @@ export const userPortfolios = pgTable(
       precision: 18,
       scale: 2,
     }).default("0"),
-    openedAt: timestamptz("opened_at").defaultNow(),
-    closedAt: timestamptz("closed_at"),
-    createdAt: timestamptz("created_at").defaultNow(),
-    updatedAt: timestamptz("updated_at").defaultNow(),
+    openedAt: timestamp("opened_at", { withTimezone: true }).defaultNow(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     uniqueUserAsset: unique().on(table.userId, table.assetId),
@@ -326,9 +326,9 @@ export const assetTransactions = pgTable(
       { onDelete: "set null" }
     ),
     notes: text("notes"),
-    transactionDate: timestamptz("transaction_date").defaultNow(),
-    createdAt: timestamptz("created_at").defaultNow(),
-    updatedAt: timestamptz("updated_at").defaultNow(),
+    transactionDate: timestamp("transaction_date", { withTimezone: true }).defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     portfolioIdx: index("idx_asset_tx_portfolio").on(table.portfolioId),
@@ -365,8 +365,8 @@ export const assetValuations = pgTable(
       .references(() => assets.id, { onDelete: "cascade" }),
     pricePerUnit: decimal("price_per_unit", { precision: 18, scale: 8 }).notNull(),
     source: valuationSourceEnum("source").notNull(),
-    recordedAt: timestamptz("recorded_at").defaultNow(),
-    createdAt: timestamptz("created_at").defaultNow(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     uniqueAssetRecorded: unique().on(table.assetId, table.recordedAt),

@@ -51,8 +51,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const newGoal = await createGoal({
-      userId: user.sub,
+    const newGoal = await createGoal(user.sub, {
       name,
       targetAmount: is_asset_target ? "1" : String(target_amount),
       assetId: is_asset_target ? asset_id : null,
@@ -92,7 +91,7 @@ export async function DELETE(req: Request) {
     // Pastikan goal milik user
     // Validasi ada di Drizzle query deleteGoal jika diperluas, atau lakukan validasi manual.
     // Sementara kita pass id saja karena mykanzdb didesain tanpa user_id di param fungsi delete jika tak ada
-    await deleteGoal(id);
+    await deleteGoal(id, user.sub);
 
     return NextResponse.json(
       { success: true, message: "Target impian berhasil dihapus!" },

@@ -66,8 +66,7 @@ export async function POST(req: Request) {
     }
 
     try {
-      const newAsset = await createCustomAsset({
-        userId: user.sub,
+      const newAsset = await createCustomAsset(user.sub, {
         name: name.trim(),
         assetType: type,
         tickerSymbol: ticker_symbol,
@@ -116,7 +115,7 @@ export async function PUT(req: Request) {
 
     const ticker_symbol = rawTicker ? rawTicker.trim().toUpperCase() : undefined;
 
-    const asset = await getAssetById(id);
+    const asset = await getAssetById(id, user.sub);
 
     if (!asset || asset.userId !== user.sub) {
       return NextResponse.json(
@@ -126,7 +125,7 @@ export async function PUT(req: Request) {
     }
 
     try {
-       const updatedAsset = await updateCustomAsset(id, {
+       const updatedAsset = await updateCustomAsset(id, user.sub, {
         name: name.trim(),
         tickerSymbol: ticker_symbol,
         unitName: unit_name,
@@ -169,7 +168,7 @@ export async function DELETE(req: Request) {
     }
     
     // Check ownership
-    const asset = await getAssetById(id);
+    const asset = await getAssetById(id, user.sub);
     if (!asset || asset.userId !== user.sub) {
         return NextResponse.json(
           { error: "Aset tidak ditemukan atau bukan milik Anda." },

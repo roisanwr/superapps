@@ -10,24 +10,24 @@ import { categories, type NewCategory, type Category } from "../schema/schema";
 
 export const SEED_CATEGORIES: Omit<NewCategory, "id" | "createdAt" | "updatedAt" | "deletedAt">[] = [
   // --- EXPENSE ---
-  { userId: null, name: "Makan & Minum",          type: "EXPENSE" },
-  { userId: null, name: "Transport",               type: "EXPENSE" },
-  { userId: null, name: "Belanja",                 type: "EXPENSE" },
-  { userId: null, name: "Tagihan & Utilitas",      type: "EXPENSE" },
-  { userId: null, name: "Kesehatan",               type: "EXPENSE" },
-  { userId: null, name: "Hiburan",                 type: "EXPENSE" },
-  { userId: null, name: "Pendidikan",              type: "EXPENSE" },
-  { userId: null, name: "Tempat Tinggal",          type: "EXPENSE" },
-  { userId: null, name: "Pakaian",                 type: "EXPENSE" },
-  { userId: null, name: "Lainnya",                 type: "EXPENSE" },
+  { userId: null, name: "Makan & Minum",          type: "PENGELUARAN" },
+  { userId: null, name: "Transport",               type: "PENGELUARAN" },
+  { userId: null, name: "Belanja",                 type: "PENGELUARAN" },
+  { userId: null, name: "Tagihan & Utilitas",      type: "PENGELUARAN" },
+  { userId: null, name: "Kesehatan",               type: "PENGELUARAN" },
+  { userId: null, name: "Hiburan",                 type: "PENGELUARAN" },
+  { userId: null, name: "Pendidikan",              type: "PENGELUARAN" },
+  { userId: null, name: "Tempat Tinggal",          type: "PENGELUARAN" },
+  { userId: null, name: "Pakaian",                 type: "PENGELUARAN" },
+  { userId: null, name: "Lainnya",                 type: "PENGELUARAN" },
 
   // --- INCOME ---
-  { userId: null, name: "Gaji",                    type: "INCOME" },
-  { userId: null, name: "Freelance",               type: "INCOME" },
-  { userId: null, name: "Bisnis",                  type: "INCOME" },
-  { userId: null, name: "Investasi",               type: "INCOME" },
-  { userId: null, name: "Hadiah",                  type: "INCOME" },
-  { userId: null, name: "Lainnya",                 type: "INCOME" },
+  { userId: null, name: "Gaji",                    type: "PEMASUKAN" },
+  { userId: null, name: "Freelance",               type: "PEMASUKAN" },
+  { userId: null, name: "Bisnis",                  type: "PEMASUKAN" },
+  { userId: null, name: "Investasi",               type: "PEMASUKAN" },
+  { userId: null, name: "Hadiah",                  type: "PEMASUKAN" },
+  { userId: null, name: "Lainnya",                 type: "PEMASUKAN" },
 
   // --- TRANSFER ---
   { userId: null, name: "Transfer Antar Wallet",   type: "TRANSFER" },
@@ -90,12 +90,12 @@ export async function getCategoriesByUserId(
 }
 
 /**
- * Ambil kategori berdasarkan tipe transaksi (INCOME / EXPENSE / TRANSFER)
+ * Ambil kategori berdasarkan tipe transaksi (PEMASUKAN / PENGELUARAN / TRANSFER)
  * Dipakai saat user memilih kategori ketika input transaksi
  */
 export async function getCategoriesByType(
   userId: string,
-  type: "INCOME" | "EXPENSE" | "TRANSFER"
+  type: "PEMASUKAN" | "PENGELUARAN" | "TRANSFER"
 ): Promise<Category[]> {
   return db
     .select()
@@ -207,12 +207,12 @@ export async function validateCategoryAccess(
 
 /**
  * Validasi kategori sesuai dengan tipe transaksi yang sedang dibuat
- * STRICT: EXPENSE category tidak boleh dipakai untuk INCOME transaction, dst
+ * STRICT: PENGELUARAN category tidak boleh dipakai untuk PEMASUKAN transaction, dst
  */
 export async function validateCategoryType(
   categoryId: string,
   userId: string,
-  expectedType: "INCOME" | "EXPENSE" | "TRANSFER"
+  expectedType: "PEMASUKAN" | "PENGELUARAN" | "TRANSFER"
 ): Promise<{ valid: boolean; reason?: string }> {
   const category = await getCategoryById(categoryId, userId);
   if (!category) return { valid: false, reason: "Kategori tidak ditemukan" };

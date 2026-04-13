@@ -71,7 +71,7 @@ export async function getWalletsWithBalance(
       WHERE wb.user_id = ${userId}
     `
   );
-  return result.rows as any[];
+  return result as any[];
 }
 
 // ==========================================

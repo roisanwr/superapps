@@ -1,30 +1,57 @@
-import { auth } from '@/lib/auth';
-import prisma from '@/lib/prisma';
+import { db } from '@/lib/db';
+import { getCurrentUser } from '@/lib/session';
+import { assets as assetsTable, wallets as walletsTable, assetTransactions, userPortfolios } from '@woilaa/db-mykanz';
+import { eq, and, isNull, desc, asc } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 import { ArrowRightLeft } from 'lucide-react';
 import AddInvestmentModal from '@/components/AddInvestmentModal';
 import InvestmentTransactionList from '@/components/InvestmentTransactionList';
 
 export default async function PortfolioTransactionsPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
   
-  const userId = session.user.id;
+  const userId = user.sub;
 
   // Fetch needed data for the modal
-  const [assets, wallets, transactions] = await Promise.all([
-    prisma.assets.findMany({ where: { user_id: userId }, orderBy: { name: 'asc' } }),
-    prisma.wallets.findMany({ where: { user_id: userId, deleted_at: null }, orderBy: { name: 'asc' } }),
-    prisma.asset_transactions.findMany({
-      where: { user_id: userId },
-      orderBy: { transaction_date: 'desc' },
-      include: {
-        user_portfolios: {
-          include: { assets: true }
-        }
-      }
-    })
-  ]);
+  const assets = await db.select().from(assetsTable).where(eq(assetsTable.userId, userId)).orderBy(asc(assetsTable.name));
+  const wallets = await db.select().from(walletsTable).where(and(eq(walletsTable.userId, userId), isNull(walletsTable.deletedAt))).orderBy(asc(walletsTable.name));
+
+  const transactionsRaw = await db.select({
+    id: assetTransactions.id,
+    transactionType: assetTransactions.transactionType,
+    transactionDate: assetTransactions.transactionDate,
+    units: assetTransactions.units,
+    pricePerUnit: assetTransactions.pricePerUnit,
+    totalAmount: assetTransactions.totalAmount,
+    portfolioId: assetTransactions.portfolioId,
+    assetName: assetsTable.name,
+    ticker: assetsTable.tickerSymbol,
+    unitName: assetsTable.unitName,
+    assetType: assetsTable.assetType,
+    portfolioTotalUnits: userPortfolios.totalUnits,
+    portfolioAvgPrice: userPortfolios.averageBuyPrice,
+  })
+  .from(assetTransactions)
+  .leftJoin(userPortfolios, eq(assetTransactions.portfolioId, userPortfolios.id))
+  .leftJoin(assetsTable, eq(userPortfolios.assetId, assetsTable.id))
+  .where(eq(assetTransactions.userId, userId))
+  .orderBy(desc(assetTransactions.transactionDate));
+  
+  const transactions = transactionsRaw.map((t: any) => ({
+    id: t.id,
+    transaction_type: t.transactionType,
+    transaction_date: t.transactionDate,
+    units: t.units,
+    price_per_unit: t.pricePerUnit,
+    total_amount: t.totalAmount,
+    user_portfolios: {
+       id: t.portfolioId,
+       total_units: t.portfolioTotalUnits,
+       average_buy_price: t.portfolioAvgPrice,
+       assets: { name: t.assetName, ticker_symbol: t.ticker, unit_name: t.unitName, asset_type: t.assetType }
+    }
+  }));
 
   const serializedTransactions = transactions.map(tx => ({
     ...tx,

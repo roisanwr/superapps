@@ -1,10 +1,10 @@
 // app/api/auth/refresh/route.ts
 import { NextResponse } from "next/server";
 import {
-  getSessionByRefreshToken,
+  getSessionByToken,
   getUserById,
-  getAppAccessByUserId,
-  deleteSessionByRefreshToken,
+  getAllAppAccessByUserId,
+  deleteSessionByToken,
   createSession,
 } from "@woilaa/db-auth";
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "@/lib/jwt";
@@ -26,7 +26,7 @@ export async function GET(req: Request) {
     }
 
     // Cek refresh token di DB
-    const session = await getSessionByRefreshToken(refreshToken);
+    const session = await getSessionByToken(refreshToken);
     if (!session || session.expiresAt < new Date()) {
       return NextResponse.redirect(new URL("/login", req.url));
     }
@@ -38,13 +38,13 @@ export async function GET(req: Request) {
     }
 
     // Ambil app access terbaru
-    const appAccess = await getAppAccessByUserId(user.id);
+    const appAccess = await getAllAppAccessByUserId(user.id);
     const grantedApps = appAccess
       .filter((a) => a.isGranted)
       .map((a) => a.appName) as ("mykanz" | "bitmove")[];
 
     // Rotate refresh token
-    await deleteSessionByRefreshToken(refreshToken);
+    await deleteSessionByToken(refreshToken);
     const newRefreshToken = await signRefreshToken(user.id);
     const newAccessToken = await signAccessToken({
       sub: user.id,

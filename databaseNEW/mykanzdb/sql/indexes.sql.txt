@@ -1,0 +1,153 @@
+-- ==========================================
+-- DB MYKANZ — INDEXES
+-- packages/db-mykanz/sql/indexes.sql
+-- ==========================================
+
+-- ==========================================
+-- WALLETS
+-- ==========================================
+
+-- Ambil semua wallet aktif milik user (query paling sering)
+CREATE INDEX idx_wallets_user_active
+  ON wallets (user_id)
+  WHERE deleted_at IS NULL;
+
+-- ==========================================
+-- CATEGORIES
+-- ==========================================
+
+-- Ambil kategori global + custom user berdasarkan tipe
+CREATE INDEX idx_categories_user_type
+  ON categories (user_id, type)
+  WHERE deleted_at IS NULL;
+
+-- Partial index khusus kategori global (user_id IS NULL)
+CREATE INDEX idx_categories_global
+  ON categories (type)
+  WHERE user_id IS NULL AND deleted_at IS NULL;
+
+-- ==========================================
+-- FIAT TRANSACTIONS
+-- ==========================================
+
+-- Filter transaksi per user + tanggal (paling sering dipakai di list & laporan)
+CREATE INDEX idx_fiat_tx_user_date
+  ON fiat_transactions (user_id, transaction_date DESC);
+
+-- Filter transaksi per wallet (dipakai di wallet detail view)
+CREATE INDEX idx_fiat_tx_wallet
+  ON fiat_transactions (wallet_id, transaction_date DESC);
+
+-- Filter transaksi per kategori (dipakai di budget progress kalkulasi)
+CREATE INDEX idx_fiat_tx_category
+  ON fiat_transactions (category_id, transaction_date DESC)
+  WHERE category_id IS NOT NULL;
+
+-- Filter per tipe transaksi (PEMASUKAN / PENGELUARAN / TRANSFER)
+CREATE INDEX idx_fiat_tx_type
+  ON fiat_transactions (user_id, transaction_type, transaction_date DESC);
+
+-- ==========================================
+-- BUDGETS
+-- ==========================================
+
+-- Filter budget aktif per user + range tanggal
+CREATE INDEX idx_budgets_user_period
+  ON budgets (user_id, start_date, end_date);
+
+-- ==========================================
+-- BUDGET CATEGORIES (Junction)
+-- ==========================================
+
+CREATE INDEX idx_budget_categories_budget
+  ON budget_categories (budget_id);
+
+CREATE INDEX idx_budget_categories_category
+  ON budget_categories (category_id);
+
+-- ==========================================
+-- BUDGET WALLETS (Junction)
+-- ==========================================
+
+CREATE INDEX idx_budget_wallets_budget
+  ON budget_wallets (budget_id);
+
+-- ==========================================
+-- ASSETS
+-- ==========================================
+
+-- Aset global (diakses semua user) — filter per tipe
+CREATE INDEX idx_assets_global_type
+  ON assets (asset_type)
+  WHERE user_id IS NULL;
+
+-- Aset custom per user
+CREATE INDEX idx_assets_user
+  ON assets (user_id, asset_type)
+  WHERE user_id IS NOT NULL;
+
+-- Lookup by ticker symbol (dipakai price fetcher yFinance / CoinGecko)
+CREATE INDEX idx_assets_ticker
+  ON assets (ticker_symbol, asset_type)
+  WHERE ticker_symbol IS NOT NULL;
+
+-- ==========================================
+-- GOALS
+-- ==========================================
+
+-- Ambil goals per user
+CREATE INDEX idx_goals_user
+  ON goals (user_id);
+
+-- Filter goals dengan deadline (dipakai reminder & near-deadline query)
+CREATE INDEX idx_goals_deadline
+  ON goals (user_id, deadline)
+  WHERE deadline IS NOT NULL;
+
+-- Filter goals yang belum completed
+CREATE INDEX idx_goals_incomplete
+  ON goals (user_id, deadline)
+  WHERE deadline IS NOT NULL
+    AND current_amount < target_amount;
+
+-- ==========================================
+-- USER PORTFOLIOS
+-- ==========================================
+
+-- Ambil portfolio aktif per user
+CREATE INDEX idx_portfolios_user_active
+  ON user_portfolios (user_id)
+  WHERE closed_at IS NULL;
+
+-- Lookup portfolio by user + asset (dipakai getOrCreatePortfolio)
+CREATE INDEX idx_portfolios_user_asset
+  ON user_portfolios (user_id, asset_id)
+  WHERE closed_at IS NULL;
+
+-- ==========================================
+-- ASSET TRANSACTIONS
+-- ==========================================
+
+-- Filter transaksi per portfolio + tanggal
+CREATE INDEX idx_asset_tx_portfolio_date
+  ON asset_transactions (portfolio_id, transaction_date DESC);
+
+-- Filter transaksi per user + tanggal (laporan global)
+CREATE INDEX idx_asset_tx_user_date
+  ON asset_transactions (user_id, transaction_date DESC);
+
+-- Filter per tipe (BELI / JUAL / SALDO_AWAL)
+CREATE INDEX idx_asset_tx_type
+  ON asset_transactions (portfolio_id, transaction_type);
+
+-- ==========================================
+-- ASSET VALUATIONS
+-- ==========================================
+
+-- Lookup harga terakhir per aset (dipakai view latest_asset_prices)
+CREATE INDEX idx_asset_valuations_asset_recorded
+  ON asset_valuations (asset_id, recorded_at DESC);
+
+-- Filter valuasi per source (API vs MANUAL)
+CREATE INDEX idx_asset_valuations_source
+  ON asset_valuations (source, recorded_at DESC);

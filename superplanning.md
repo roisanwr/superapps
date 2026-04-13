@@ -8,7 +8,7 @@
 ## 📐 ARSITEKTUR BESAR: Satu Domain, Tiga Wajah
 
 ```
-roisanwr.me/           → Portfolio (Landing, About, Projects, Blog, Contact)
+roisanwr.me/           → Hub (Landing, About, Projects, Blog, Contact, Dashboard)
 roisanwr.me/finance/*  → MyKanz (Manajemen Keuangan)
 roisanwr.me/quests/*   → BitMove (Fitness Gamification RPG)
 ```
@@ -16,29 +16,79 @@ roisanwr.me/quests/*   → BitMove (Fitness Gamification RPG)
 ### Kenapa ini keren secara teknis?
 - **Next.js Multi-Zones**: Tiga Next.js app berjalan terpisah, tapi dikonfigurasi seolah satu aplikasi.
 - **Turborepo Monorepo**: Semua app dan shared package dalam satu repository → satu `git push`.
-- **Supabase SSO**: Login sekali di Portfolio Hub, langsung otentikasi ke Finance & Quests.
-- **Kesan Portofolio**: Arsitektur level senior — Monorepo + Multi-Zones + SSO adalah *talking point* wawancara kerja yang sangat kuat.
+- **Custom JWT Auth**: Auth mandiri di database sendiri — tidak perlu Supabase Auth, tidak perlu NextAuth — full kontrol.
+- **Drizzle ORM**: Type-safe, ringan, tanpa "client generation" seperti Prisma — langsung query dari schema TypeScript.
+- **Kesan Portofolio**: Arsitektur level senior — Monorepo + Multi-Zones + Custom Auth + Multi-DB adalah *talking point* wawancara yang sangat kuat.
+
+---
+
+## 🗄️ ARSITEKTUR DATABASE BARU (DRIZZLE — 3 DATABASE TERPISAH)
+
+> **Keputusan Final:** Tiga database PostgreSQL terpisah. Tidak ada cross-DB FK. Komunikasi antar DB hanya melalui `userId` UUID yang dikirim via JWT.
+
+```
+┌─────────────────────────────────────────────────┐
+│              DATABASE LAYOUT                     │
+├─────────────────┬───────────────┬───────────────┤
+│  authdb         │  mykanzdb     │  bitmovedb    │
+│  @woilaa/db-auth│  @woilaa/db-  │  @woilaa/db-  │
+│                 │  mykanz       │  bitmove      │
+├─────────────────┼───────────────┼───────────────┤
+│ users           │ wallets       │ profiles      │
+│ sessions        │ categories    │ level_rules   │
+│ app_access      │ fiat_transact │ tier_rewards  │
+│                 │ ions          │ point_logs    │
+│                 │ budgets       │ task_library  │
+│                 │ budget_categ  │ tasks         │
+│                 │ ories         │ workouts      │
+│                 │ budget_wallet │ exercise_lib  │
+│                 │ s             │ difficulty_sc │
+│                 │ goals         │ ales          │
+│                 │ assets        │ workout_exerc │
+│                 │ user_portfoli │ ises          │
+│                 │ os            │ sets          │
+│                 │ asset_transac │ training_prog │
+│                 │ tions         │ rams          │
+│                 │ asset_valuat  │ program_sched │
+│                 │ ions          │ ules          │
+│                 │               │ rewards       │
+└─────────────────┴───────────────┴───────────────┘
+
+Cross-DB link: userId UUID dikirim via JWT → tidak ada FK constraint lintas DB
+```
+
+### Paket Database di Monorepo
+
+```
+packages/
+├── db-auth/        → @woilaa/db-auth    (authdb)
+├── db-mykanz/      → @woilaa/db-mykanz  (mykanzdb)
+└── db-bitmove/     → @woilaa/db-bitmove (bitmovedb)
+```
+
+Setiap paket sudah ada di folder `databaseNEW/` dan akan dipindahkan ke `packages/`.
 
 ---
 
 ## 📦 STRUKTUR MONOREPO TARGET
 
 ```
-roisanwr-platform/          ← Root Turborepo
+superapps/                   ← Root Turborepo (sudah ada)
 ├── apps/
-│   ├── hub/                ← Portfolio + Dashboard Hub (domain utama)
-│   ├── mykanz/             ← MyKanz (route: /finance/*)
-│   └── bitmove/            ← BitMove (route: /quests/*)
+│   ├── hub/                 ← Portfolio + Dashboard Hub (domain utama) [BELUM ADA]
+│   ├── mykanz/              ← MyKanz (route: /finance/*)  [SUDAH ADA - perlu migrasi]
+│   └── bitmove/             ← BitMove (route: /quests/*) [SUDAH ADA - perlu migrasi]
 │
 ├── packages/
-│   ├── ui/                 ← Shared Design System (Button, Modal, Input, TopBar)
-│   ├── auth/               ← Shared Auth utilities (Supabase client, session helpers)
-│   ├── database/           ← Shared Prisma client & schema (opsional, jika merge DB)
-│   └── config/             ← Shared tsconfig, ESLint, Tailwind base config
+│   ├── ui/                  ← Shared Design System [SUDAH ADA - perlu dilengkapi]
+│   ├── config/              ← Shared tsconfig, ESLint, Tailwind [SUDAH ADA]
+│   ├── db-auth/             ← @woilaa/db-auth (Drizzle schema + queries auth) [BARU - dari databaseNEW/authdb]
+│   ├── db-mykanz/           ← @woilaa/db-mykanz (Drizzle schema + queries finance) [BARU - dari databaseNEW/mykanzdb]
+│   └── db-bitmove/          ← @woilaa/db-bitmove (Drizzle schema + queries quests) [BARU - dari databaseNEW/db-bitmove]
 │
-├── turbo.json
-├── package.json            ← Root workspace
-└── pnpm-workspace.yaml
+├── turbo.json               [SUDAH ADA]
+├── package.json             [SUDAH ADA]
+└── pnpm-workspace.yaml      [SUDAH ADA]
 ```
 
 ---
@@ -47,444 +97,250 @@ roisanwr-platform/          ← Root Turborepo
 
 ---
 
-### FASE 0 — Perancangan & Fondasi Konsep *(Minggu 0 — Sebelum Coding)*
+### FASE 0 — Status Saat Ini & Keputusan Final *(SELESAI)*
 
-> **Tujuan:** Tetapkan keputusan desain besar sebelum satu baris kode ditulis.
+#### ✅ Keputusan Teknis yang Sudah Ditetapkan
 
-#### 0.1 — Keputusan Teknis
-- [ ] **Package Manager**: Gunakan `pnpm` (lebih cepat, lebih hemat disk untuk monorepo).
-- [ ] **App Router**: Pastikan semua app Next.js menggunakan App Router (bukan Pages Router).
-- [ ] **Database Strategy**: Tentukan apakah DB MyKanz dan BitMove **tetap terpisah** atau **digabung** ke satu Supabase project.
-  - 💡 **Rekomendasi**: Pisahkan schema (dua schema PostgreSQL berbeda: `finance` dan `quests`) tapi **satu Supabase project**. Ini menghemat biaya dan mempermudah SSO.
-- [ ] **Auth Strategy**: Gunakan **Supabase Auth** sebagai satu-satunya sumber kebenaran untuk identitas user.
-- [ ] **Domain Plan**: Daftarkan/konfigurasikan `roisanwr.me` (atau domain pilihanmu).
+| Keputusan | Pilihan Final |
+|-----------|---------------|
+| Package Manager | `pnpm` + Turborepo ✅ |
+| Framework | Next.js 16+ App Router ✅ |
+| ORM | **Drizzle ORM** (migrasi dari Prisma) 🔄 |
+| Auth Strategy | **Custom JWT** — bukan Supabase Auth, bukan NextAuth 🔄 |
+| Database | PostgreSQL via Supabase (3 database terpisah) |
+| Auth DB | `authdb` — users, sessions, app_access |
+| Finance DB | `mykanzdb` — wallets, categories, dst. |
+| Quests DB | `bitmovedb` — profiles, tasks, workouts, dst. |
+| Styling | Tailwind CSS v4 + CSS Variables |
+| Deploy | Vercel (3 project dari 1 repo) |
 
-#### 0.2 — Analisis Kode Existing
+#### Status App Saat Ini
 
-**MyKanz (Status Saat Ini):**
-- Stack: Next.js 16, Prisma 7, PostgreSQL, NextAuth v5
-- Auth: Manual (`password_hash` di tabel `users`)
-- DB Entities: `users`, `wallets`, `categories`, `fiat_transactions`, `asset_transactions`, `assets`, `budgets`, `goals`
-- **Pekerjaan Migrasi:** Ganti `users.password_hash` → link ke `auth.users` Supabase
+**MyKanz:**
+- Stack: Next.js 16, **Prisma 7**, PostgreSQL, NextAuth v5 ← **PERLU MIGRASI**
+- Auth: Manual password_hash di tabel users (via Prisma + NextAuth + bcrypt)
+- DB terhubung ke Supabase via direct URL + pooler URL
+- Sudah ada di `apps/mykanz/` dalam monorepo
 
-**BitMove (Status Saat Ini):**
-- Stack: Next.js 16, Prisma 7, PostgreSQL, NextAuth v5, sudah ada `@supabase/supabase-js`
-- Auth: Manual (`profiles.password_hash`)
-- DB Entities: `profiles`, `tasks`, `workouts`, `point_logs`, `rewards`, `level_rules`, dst.
-- **Pekerjaan Migrasi:** Hapus `profiles.password_hash` → link ke `auth.users` Supabase
+**BitMove:**
+- Stack: Next.js 16, **Prisma 7**, PostgreSQL, NextAuth v5 ← **PERLU MIGRASI**
+- Auth: Manual password_hash di profiles
+- Sudah ada di `apps/bitmove/` dalam monorepo
 
-#### 0.3 — Desain Visual Kasar
-- [ ] Buat wireframe/moodboard untuk:
-  - Landing Page Portfolio (hero section, projects showcase, about me)
-  - Dashboard Hub (post-login: widget ringkasan finance + quest)
-  - Tema transisi antara Finance Mode ↔ Quest Mode
+**Database Baru (databaseNEW/):**
+- ✅ `authdb/` — Drizzle schema + queries untuk auth (users, sessions, app_access)
+- ✅ `mykanzdb/` — Drizzle schema + queries untuk finance
+- ✅ `db-bitmove/` — Drizzle schema + queries untuk quests
+- Status: Belum dipindahkan ke `packages/`, belum ada `package.json`, belum ada `client.ts`
 
 ---
 
-### FASE 1 — Setup Monorepo & Migrasi Kode *(Minggu 1)*
+### FASE 1 — Migrasi Database Package ke Monorepo *(PRIORITAS SEKARANG)*
 
-> **Tujuan:** Pindahkan semua kode ke dalam satu rumah Turborepo.
+> **Tujuan:** Pindahkan folder `databaseNEW/` menjadi package resmi monorepo yang bisa di-import apps.
 
-#### 1.1 — Inisialisasi Monorepo
-```bash
-mkdir roisanwr-platform && cd roisanwr-platform
-pnpm dlx create-turbo@latest .
-# Pilih: pnpm, hapus semua contoh app bawaan Turbo
+#### 1.1 — Setup Package `@woilaa/db-auth`
+
+Pindahkan `databaseNEW/authdb/` → `packages/db-auth/`
+
+**Struktur target:**
 ```
-
-#### 1.2 — Struktur Awal
-```bash
-mkdir -p apps/hub apps/mykanz apps/bitmove
-mkdir -p packages/ui packages/auth packages/config
-```
-
-#### 1.3 — Migrasi App
-- [ ] Salin isi `/Projects/mykanz` → `apps/mykanz` (exclude `.git`, `node_modules`, `.next`)
-- [ ] Salin isi `/Projects/bitmove` → `apps/bitmove` (exclude `.git`, `node_modules`, `.next`)
-- [ ] Update `package.json` masing-masing app:
-  - Ubah `name` menjadi `@superapp/mykanz` dan `@superapp/bitmove`
-  - Tambahkan reference ke `@superapp/ui` dan `@superapp/auth`
-
-#### 1.4 — Buat Package `@superapp/config`
-Berisi:
-- `tsconfig.base.json` (shared TypeScript config)
-- `eslint.config.base.mjs` (shared ESLint rules)
-- `tailwind.base.ts` (shared Tailwind base config, masing-masing app extend ini)
-
-#### 1.5 — Buat Package `@superapp/ui`
-Ekstrak komponen UI yang **identik** di kedua app:
-- `Button`
-- `Input` / `TextArea`
-- `Modal` / `ConfirmModal`
-- `TopBar` / `BottomNav` (template dasar tanpa tema)
-- `Badge` / `Tag`
-- `Card` (container generic)
-- `Spinner` / `LoadingState`
-
-> **Catatan:** Komponen di `@superapp/ui` harus **tema-agnostic** (gunakan CSS variables), biarkan tiap app yang me-override variabelnya.
-
-```bash
-# Struktur packages/ui
-packages/ui/
+packages/db-auth/
 ├── src/
-│   ├── components/
-│   │   ├── Button.tsx
-│   │   ├── Modal.tsx
-│   │   └── ...
-│   └── index.ts       ← export semua komponen
-├── package.json       ← { "name": "@superapp/ui" }
-└── tsconfig.json
+│   ├── schema/
+│   │   └── schema.ts        ← Sudah ada (users, sessions, app_access)
+│   ├── queries/
+│   │   ├── users.ts         ← Sudah ada
+│   │   ├── sessions.ts      ← Sudah ada
+│   │   └── appAccess.ts     ← Sudah ada
+│   ├── client.ts            ← PERLU DIBUAT (Drizzle db instance untuk authdb)
+│   └── index.ts             ← Sudah ada (barrel export)
+├── package.json             ← PERLU DIBUAT
+├── tsconfig.json            ← PERLU DIBUAT
+└── drizzle.config.ts        ← PERLU DIBUAT
 ```
 
-#### 1.6 — Verifikasi Build
-```bash
-pnpm install
-pnpm turbo build
-```
-Pastikan semua app bisa di-build dari root monorepo.
-
----
-
-### FASE 2 — Sentralisasi Auth dengan Supabase *(Minggu 2)*
-
-> **Tujuan:** Single Sign-On — login sekali, akses semua.
-
-#### 2.1 — Setup Supabase Project
-- [ ] Buat project baru di [supabase.com](https://supabase.com)
-- [ ] Aktifkan **Email/Password Auth** (minimal), tambahkan Google OAuth sebagai bonus
-- [ ] Catat: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
-
-#### 2.2 — Desain Ulang Schema Database
-
-**Strategi:** Gunakan dua PostgreSQL Schema terpisah dalam satu Supabase project.
-
-```sql
--- Schema 1: finance (untuk MyKanz)
--- Schema 2: quests (untuk BitMove)
--- Schema auth: milik Supabase (jangan disentuh manual)
-```
-
-**Migration MyKanz:**
-```sql
--- Hapus password_hash dari users
--- Tambah foreign key ke auth.users
-ALTER TABLE finance.users
-  DROP COLUMN password_hash,
-  ADD CONSTRAINT fk_supabase_user
-    FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE;
-```
-
-**Migration BitMove:**
-```sql
--- Hapus password_hash dari profiles
--- Ganti id agar sinkron dengan auth.users
-ALTER TABLE quests.profiles
-  DROP COLUMN password_hash,
-  ADD CONSTRAINT fk_supabase_user
-    FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE;
-```
-
-#### 2.3 — Buat Package `@superapp/auth`
-
-```typescript
-// packages/auth/src/server.ts
-import { createServerClient } from '@supabase/ssr'
-
-// packages/auth/src/client.ts
-import { createBrowserClient } from '@supabase/ssr'
-```
-
-Package ini berisi:
-- `createServerClient()` helper untuk Server Components
-- `createBrowserClient()` helper untuk Client Components
-- `getSession()` utility
-- `middleware` helper untuk route protection
-
-#### 2.4 — Implementasi Login Terpusat
-- [ ] Login/Register page ada di `apps/hub` (`/login`, `/register`)
-- [ ] Setelah login di Hub, cookie Supabase session di-set untuk seluruh domain (`.roisanwr.me`)
-- [ ] App `mykanz` dan `bitmove` membaca session dari cookie — **tidak ada form login sendiri**
-- [ ] Buat `middleware.ts` di setiap app yang redirect ke `roisanwr.me/login` jika tidak ada session
-
-#### 2.5 — Migrasi Data
-- [ ] Buat `scripts/migrate-users.ts` di root monorepo
-- [ ] Script ini: baca data user dari DB lama → buat user di Supabase Auth → update ID di tabel finance/quests
-
----
-
-### FASE 3 — Bangun `apps/hub` (Portfolio + Dashboard) *(Minggu 3)*
-
-> **Tujuan:** Ini adalah wajah utama dari seluruh ekosistem.
-
-#### 3.1 — Halaman Portfolio (Public — Sebelum Login)
-
-##### Route: `/` — Landing Page
-```
-Hero Section:
-  - Nama & Tagline (animasi typing/reveal)
-  - Dua CTA: "Lihat Proyek" & "Hubungi Saya"
-  - Background: Subtle animated gradient atau particle effect
-
-About Section:
-  - Foto + Bio singkat
-  - Tech stack badges (Next.js, TypeScript, PostgreSQL, dll)
-
-Projects Section:
-  - Card untuk MyKanz (Finance App)
-  - Card untuk BitMove (RPG Fitness)
-  - Card untuk proyek lain (internship-scraper, dll)
-  - Setiap card: screenshot/mockup, stack, link ke live demo & GitHub
-
-Skills/Experience Section:
-  - Timeline pendidikan & pengalaman
-  - Skill bars atau tag cloud
-
-Contact Section:
-  - Form kontak
-  - Link: GitHub, LinkedIn, Email
-```
-
-##### Route: `/projects/[slug]` — Detail Proyek
-- Case study lebih dalam untuk tiap proyek
-- Screenshot, arsitektur, tantangan yang dihadapi
-
-##### Route: `/blog` (Opsional — Fase Bonus)
-- Tulis proses membangun Super App ini → konten portofolio *sambil membangun*
-
-#### 3.2 — Dashboard Hub (Private — Setelah Login)
-
-##### Route: `/dashboard` — Command Center
-```
-┌────────────────────────────────────────────────────┐
-│  👋 Selamat Datang, Roisan                         │
-│  11 April 2026 · Winstreak: 🔥 7 hari             │
-├──────────────────────┬─────────────────────────────┤
-│  💰 FINANCE (MyKanz) │  ⚔️ QUESTS (BitMove)        │
-│  Total Aset: Rp X    │  Level 12 · XP: 2400/3000   │
-│  Pengeluaran bulan   │  Quest hari ini: 3/5 selesai │
-│  ini: Rp Y           │  Winstreak: 7 hari berturut  │
-│  [Buka Finance →]    │  [Buka Quests →]             │
-├──────────────────────┴─────────────────────────────┤
-│  📊 GRAFIK 7 HARI TERAKHIR                         │
-│  [Pengeluaran] [XP Earned] - toggle antara keduanya│
-└────────────────────────────────────────────────────┘
-```
-
-Widget data diambil secara paralel dari kedua API:
-```typescript
-// Dashboard fetches data dari kedua service secara parallel
-const [financeData, questData] = await Promise.all([
-  fetch('/finance/api/summary'),
-  fetch('/quests/api/summary'),
-])
-```
-
-#### 3.3 — Konfigurasi Multi-Zones (Next.js Rewrites)
-
-```typescript
-// apps/hub/next.config.ts
-const nextConfig = {
-  async rewrites() {
-    return [
-      {
-        source: '/finance/:path*',
-        destination: `${process.env.MYKANZ_URL}/finance/:path*`,
-      },
-      {
-        source: '/quests/:path*',
-        destination: `${process.env.BITMOVE_URL}/quests/:path*`,
-      },
-    ]
-  },
-}
-```
-
-```typescript
-// apps/mykanz/next.config.ts
-const nextConfig = {
-  basePath: '/finance',  // ← Semua route mykanz jadi /finance/...
-}
-
-// apps/bitmove/next.config.ts
-const nextConfig = {
-  basePath: '/quests',   // ← Semua route bitmove jadi /quests/...
-}
-```
-
----
-
-### FASE 4 — Penyatuan UI/UX "Beda Rasa, Satu DNA" *(Minggu 4)*
-
-> **Tujuan:** User merasakan perpindahan "mode", bukan perpindahan aplikasi.
-
-#### 4.1 — Design System via CSS Variables
-
-Package `@superapp/ui` mendefinisikan *interface* variabel CSS:
-```css
-/* packages/ui/src/tokens.css */
-:root {
-  --color-primary: ;        /* Tiap app mengisi ini */
-  --color-primary-hover: ;
-  --color-surface: ;
-  --color-surface-alt: ;
-  --color-text: ;
-  --color-text-muted: ;
-  --color-border: ;
-  --radius-base: ;
-  --font-sans: ;
-}
-```
-
-**MyKanz Theme** (Elegan, Profesional):
-```css
-/* apps/mykanz/app/globals.css */
-:root {
-  --color-primary: oklch(65% 0.15 160);   /* Emerald */
-  --color-surface: oklch(98% 0.01 240);   /* Off-white */
-  --color-text: oklch(20% 0.02 240);      /* Deep slate */
-  --font-sans: 'Inter', sans-serif;
-}
-```
-
-**BitMove Theme** (Gaming, Dark, Neon):
-```css
-/* apps/bitmove/app/globals.css */
-:root {
-  --color-primary: oklch(65% 0.2 230);    /* Neon Blue */
-  --color-surface: oklch(12% 0.02 240);   /* Near-black */
-  --color-text: oklch(95% 0.01 240);      /* Near-white */
-  --font-sans: 'Rajdhani', sans-serif;    /* Gaming font */
-}
-```
-
-#### 4.2 — Animasi Transisi Mode (Context Switch)
-
-Saat navigasi antara `/finance/*` dan `/quests/*`, tampilkan animasi transisi:
-```typescript
-// Opsi A: Framer Motion Page Transition
-// Wrapped di layout Hub: fade + slide + color shift
-
-// Opsi B: CSS View Transitions API (native, no library)
-document.startViewTransition(() => {
-  router.push('/quests')
-})
-```
-
-Animasi yang direkomendasikan:
-- **Finance → Quests**: Efek "memasuki dungeon" — layar gelap memudar, accent color bergeser dari emerald ke neon blue
-- **Quests → Finance**: Efek "kembali ke dunia nyata" — inverse dari atas
-
-#### 4.3 — Persistent Bottom Navigation (Mobile)
-
-Di layar mobile (`< 768px`), ganti sidebar dengan Bottom Nav yang *persisten* di semua mode:
-```
-┌────────────────────────────┐
-│                            │
-│       [Content Area]       │
-│                            │
-├────────────────────────────┤
-│ 🏠 Hub │ 💰 Finance │ ⚔️ Quests │
-└────────────────────────────┘
-```
-
-Bottom Nav ada di `apps/hub` dan di-inject melalui layout (atau gunakan Multi-Zone iframe trick).
-
----
-
-### FASE 5 — Progressive Web App (PWA) *(Minggu 5)*
-
-> **Tujuan:** Terasa seperti native app saat di-install di HP.
-
-#### 5.1 — Audit Responsivitas
-- [ ] Semua tabel (transaksi, log workout) harus ada versi card/list untuk mobile
-- [ ] Touch target minimum 44x44px
-- [ ] Pastikan tidak ada horizontal scroll di mobile
-
-#### 5.2 — Implementasi PWA
-```bash
-cd apps/hub
-pnpm add next-pwa
-```
-
-```typescript
-// apps/hub/next.config.ts
-import withPWA from 'next-pwa'
-
-export default withPWA({
-  dest: 'public',
-  disable: process.env.NODE_ENV === 'development',
-})
-```
-
-**`apps/hub/public/manifest.json`:**
+**`packages/db-auth/package.json`:**
 ```json
 {
-  "name": "roisanwr platform",
-  "short_name": "roisanwr",
-  "description": "Portfolio, Finance & Fitness — All in One",
-  "start_url": "/dashboard",
-  "display": "standalone",
-  "background_color": "#0a0a0f",
-  "theme_color": "#3b82f6",
-  "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
-  ]
+  "name": "@woilaa/db-auth",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.40.0",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.30.0",
+    "typescript": "^5"
+  }
 }
 ```
 
-#### 5.3 — Service Worker Caching Strategy
-- **Dashboard Hub**: Cache-first (boleh lihat data lama saat offline)
-- **Finance data**: Network-first (data keuangan harus selalu fresh)
-- **Quests data**: Stale-while-revalidate (tampilkan cache, update di background)
+**`packages/db-auth/src/client.ts`:**
+```typescript
+// packages/db-auth/src/client.ts
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "./schema/schema";
+
+const connectionString = process.env.AUTH_DATABASE_URL!;
+
+const queryClient = postgres(connectionString);
+
+export const db = drizzle(queryClient, { schema });
+```
+
+**`packages/db-auth/drizzle.config.ts`:**
+```typescript
+import { defineConfig } from "drizzle-kit";
+
+export default defineConfig({
+  schema: "./src/schema/schema.ts",
+  out: "./drizzle",
+  dialect: "postgresql",
+  dbCredentials: {
+    url: process.env.AUTH_DATABASE_URL!,
+  },
+});
+```
 
 ---
 
-### FASE 6 — Deployment Production *(Minggu 6)*
+#### 1.2 — Setup Package `@woilaa/db-mykanz`
 
-> **Tujuan:** Go live di Vercel dengan custom domain.
+Pindahkan `databaseNEW/mykanzdb/` → `packages/db-mykanz/`
 
-#### 6.1 — Setup Vercel Monorepo (3 Project Terpisah)
-
-Di Vercel, deploy 3 proyek berbeda dari satu repository:
-
-| Vercel Project | Root Directory | Domain |
-|----------------|---------------|--------|
-| `superapp-hub` | `apps/hub` | `roisanwr.me` |
-| `superapp-mykanz` | `apps/mykanz` | `finance.roisanwr.me` (internal) |
-| `superapp-bitmove` | `apps/bitmove` | `quests.roisanwr.me` (internal) |
-
-`apps/mykanz` dan `apps/bitmove` **tidak perlu custom domain publik** — mereka diakses melalui rewrites dari Hub.
-
-#### 6.2 — Environment Variables
-
-**`apps/hub` (Vercel):**
+**Struktur target:**
 ```
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-MYKANZ_URL=https://finance-internal.roisanwr.me
-BITMOVE_URL=https://quests-internal.roisanwr.me
+packages/db-mykanz/
+├── src/
+│   ├── schema/
+│   │   └── schema.ts        ← Sudah ada (wallets, categories, fiat_transactions, dst.)
+│   ├── queries/
+│   │   ├── wallets.ts       ← Sudah ada
+│   │   ├── categories.ts    ← Sudah ada
+│   │   ├── transactions.ts  ← Sudah ada
+│   │   ├── budgets.ts       ← Sudah ada
+│   │   ├── assets.ts        ← Sudah ada
+│   │   ├── goals.ts         ← Sudah ada
+│   │   └── portfolios.ts    ← Sudah ada
+│   ├── client.ts            ← PERLU DIBUAT
+│   └── index.ts             ← Sudah ada (barrel export lengkap)
+├── package.json             ← PERLU DIBUAT
+├── tsconfig.json            ← PERLU DIBUAT
+└── drizzle.config.ts        ← PERLU DIBUAT
 ```
 
-**`apps/mykanz` (Vercel):**
-```
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-DATABASE_URL=postgresql://...?schema=finance
+**Schema Summary (`@woilaa/db-mykanz`):**
+| Table | Deskripsi |
+|-------|-----------|
+| `wallets` | Dompet user (TUNAI, BANK, DOMPET_DIGITAL) |
+| `categories` | Kategori transaksi (global seed + custom user) |
+| `fiat_transactions` | Transaksi uang (PEMASUKAN, PENGELUARAN, TRANSFER) |
+| `budgets` | Budget dengan periode |
+| `budget_categories` | Junction: budget ↔ kategori (hybrid) |
+| `budget_wallets` | Junction: budget ↔ wallet (hybrid) |
+| `goals` | Target tabungan/aset |
+| `assets` | Master aset (global + custom user — KRIPTO, SAHAM, LOGAM, dll) |
+| `user_portfolios` | Kepemilikan aset user (DCA tracking) |
+| `asset_transactions` | Transaksi aset (BELI, JUAL, SALDO_AWAL) |
+| `asset_valuations` | History harga aset (API + MANUAL) |
+
+**Catatan cross-DB:** `userId` di semua tabel adalah UUID polos (tidak ada FK) — nilainya berasal dari JWT payload yang diverifikasi di app layer.
+
+**`packages/db-mykanz/src/client.ts`:**
+```typescript
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "./schema/schema";
+
+const connectionString = process.env.MYKANZ_DATABASE_URL!;
+
+const queryClient = postgres(connectionString);
+
+export const db = drizzle(queryClient, { schema });
 ```
 
-**`apps/bitmove` (Vercel):**
+---
+
+#### 1.3 — Setup Package `@woilaa/db-bitmove`
+
+Pindahkan `databaseNEW/db-bitmove/` → `packages/db-bitmove/`
+
+**Struktur target:**
 ```
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-DATABASE_URL=postgresql://...?schema=quests
+packages/db-bitmove/
+├── src/
+│   ├── schema/
+│   │   └── schema.ts        ← Sudah ada (profiles, tasks, workouts, dst.)
+│   ├── queries/
+│   │   ├── profiles.ts      ← Sudah ada
+│   │   ├── tasks.ts         ← Sudah ada
+│   │   ├── workouts.ts      ← Sudah ada
+│   │   ├── programs.ts      ← Sudah ada
+│   │   ├── rewards.ts       ← Sudah ada
+│   │   └── gamification.ts  ← Sudah ada
+│   ├── client.ts            ← PERLU DIBUAT
+│   └── index.ts             ← Sudah ada (barrel export)
+├── package.json             ← PERLU DIBUAT
+├── tsconfig.json            ← PERLU DIBUAT
+└── drizzle.config.ts        ← PERLU DIBUAT
 ```
 
-#### 6.3 — `turbo.json` untuk Build Pipeline
+**Schema Summary (`@woilaa/db-bitmove`):**
+| Table | Deskripsi |
+|-------|-----------|
+| `profiles` | Gamification stats (XP, level, streak, tier) |
+| `level_rules` | Lookup XP threshold per level (seed 1–50) |
+| `tier_rewards` | Reward XP/points per tier (D, C, B, A, S, SS) |
+| `point_logs` | Ledger immutable semua perubahan XP/points |
+| `task_library` | Template task bawaan sistem |
+| `tasks` | Task milik user (clone dari library) |
+| `workouts` | Sesi workout (IN_PROGRESS / COMPLETED) |
+| `exercise_library` | 51 exercise bawaan + custom user |
+| `difficulty_scales` | Threshold tier per scale_type |
+| `workout_exercises` | Junction: workout ↔ exercise |
+| `sets` | Set per exercise dengan tier dan value |
+| `training_programs` | Program latihan user (support rotation) |
+| `program_schedules` | Template schedule per hari per minggu |
+| `rewards` | Reward custom user (redeem via points) |
+
+**Catatan cross-DB:** `profiles.userId` adalah UUID yang sama dengan `authdb.users.id` — dikirim via JWT, **bukan FK constraint**.
+
+**`packages/db-bitmove/src/client.ts`:**
+```typescript
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "./schema/schema";
+
+const connectionString = process.env.BITMOVE_DATABASE_URL!;
+
+const queryClient = postgres(connectionString);
+
+export const db = drizzle(queryClient, { schema });
+```
+
+---
+
+#### 1.4 — Update `pnpm-workspace.yaml`
+
+```yaml
+packages:
+  - "apps/*"
+  - "packages/*"
+```
+
+> Sudah include `packages/*` — tidak perlu ubah. Cukup pastikan folder `packages/db-auth`, `packages/db-mykanz`, `packages/db-bitmove` ada.
+
+#### 1.5 — Update `turbo.json` untuk DB packages
+
+Tambahkan task `db:generate` dan `db:migrate`:
+
 ```json
 {
   "$schema": "https://turbo.build/schema.json",
@@ -499,126 +355,712 @@ DATABASE_URL=postgresql://...?schema=quests
     },
     "lint": {
       "dependsOn": ["^lint"]
+    },
+    "db:generate": {
+      "cache": false
+    },
+    "db:migrate": {
+      "cache": false
     }
   }
 }
 ```
 
-#### 6.4 — Domain & Go Live
-- [ ] Setup custom domain di Vercel untuk `apps/hub`
-- [ ] Konfigurasi DNS: `roisanwr.me` → Vercel Hub
-- [ ] Test end-to-end: Landing → Login → Dashboard → Finance → Quests
-- [ ] Setup Vercel Analytics untuk monitoring
+---
+
+### FASE 2 — Migrasi Auth: Prisma + NextAuth → Custom JWT *(INTI PERUBAHAN)*
+
+> **Tujuan:** Ganti seluruh sistem auth di `apps/mykanz` dan `apps/bitmove` dari Prisma + NextAuth ke Custom JWT menggunakan `@woilaa/db-auth`.
+
+#### 2.1 — Desain Sistem Auth Baru
+
+**Flow Register:**
+```
+User input email/password
+  → Hash password (bcrypt)
+  → INSERT ke authdb.users
+  → INSERT ke authdb.app_access (mykanz + bitmove auto-granted)
+  → Return access token (JWT short-lived) + refresh token (UUID, disimpan di authdb.sessions)
+```
+
+**Flow Login:**
+```
+User input email/password
+  → SELECT dari authdb.users WHERE email = ?
+  → bcrypt.compare(password, passwordHash)
+  → Generate access token (JWT, 15 menit, signed dengan JWT_SECRET)
+  → Generate refresh token (UUID v4, 7 hari, INSERT ke authdb.sessions)
+  → Set HTTP-only cookie: access_token + refresh_token
+```
+
+**JWT Payload:**
+```typescript
+type JWTPayload = {
+  sub: string;       // user.id (UUID)
+  email: string;
+  username: string;
+  name: string;
+  role: "user" | "admin";
+  apps: ("mykanz" | "bitmove")[];  // dari app_access
+  iat: number;
+  exp: number;
+}
+```
+
+**Route Protection (Middleware):**
+```
+Request masuk
+  → Baca cookie access_token
+  → Verify JWT (jose / jsonwebtoken)
+  → Jika valid: inject userId ke request header → lanjut
+  → Jika expired: cek refresh_token di DB → issue access_token baru
+  → Jika tidak ada / invalid: redirect ke /login
+```
+
+#### 2.2 — Hapus Prisma dari MyKanz
+
+**File yang perlu dihapus/diganti:**
+
+| File | Action |
+|------|--------|
+| `apps/mykanz/lib/prisma.ts` | ❌ Delete |
+| `apps/mykanz/lib/auth.ts` | 🔄 Rewrite (hapus NextAuth, pakai custom JWT) |
+| `apps/mykanz/lib/auth.config.ts` | ❌ Delete |
+| `apps/mykanz/prisma/` | ❌ Delete folder |
+| `apps/mykanz/prisma.config.ts` | ❌ Delete |
+
+**Dependencies yang dihapus dari `apps/mykanz/package.json`:**
+```json
+// HAPUS
+"@prisma/adapter-pg": "^7.4.2",
+"@prisma/client": "^7.4.2",
+"next-auth": "^5.0.0-beta.30",
+"prisma": "^7.4.2"  // devDependencies
+```
+
+**Dependencies yang ditambahkan:**
+```json
+// TAMBAH
+"@woilaa/db-auth": "workspace:*",
+"@woilaa/db-mykanz": "workspace:*",
+"jose": "^5.9.0",
+"postgres": "^3.4.5"
+```
+
+**File baru yang dibuat:**
+
+```
+apps/mykanz/lib/
+├── db.ts          ← import { db } from "@woilaa/db-mykanz" (re-export)
+├── auth-db.ts     ← import { db } from "@woilaa/db-auth" (re-export)
+├── jwt.ts         ← helper: signToken, verifyToken, withAuth
+└── session.ts     ← helper: getCurrentUser() dari cookie/header
+```
+
+**`apps/mykanz/middleware.ts` — Rewrite:**
+```typescript
+// middleware.ts
+import { NextRequest, NextResponse } from "next/server";
+import { verifyToken } from "./lib/jwt";
+
+export async function middleware(request: NextRequest) {
+  const token = request.cookies.get("access_token")?.value;
+
+  if (!token) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  try {
+    const payload = await verifyToken(token);
+    const response = NextResponse.next();
+    // Inject userId ke header untuk dipakai di Server Components
+    response.headers.set("x-user-id", payload.sub);
+    return response;
+  } catch {
+    // Token expired — coba refresh
+    return NextResponse.redirect(new URL("/api/auth/refresh", request.url));
+  }
+}
+
+export const config = {
+  matcher: ["/((?!login|register|api/auth|_next/static|_next/image|favicon).*)"],
+};
+```
+
+**`apps/mykanz/app/api/auth/` — Route Handlers baru:**
+```
+apps/mykanz/app/api/auth/
+├── register/route.ts    ← POST: create user di authdb
+├── login/route.ts       ← POST: verify password, set cookie JWT
+├── logout/route.ts      ← POST: hapus session dari DB + clear cookie
+└── refresh/route.ts     ← GET: gunakan refresh token untuk issue access token baru
+```
+
+#### 2.3 — Hapus Prisma dari BitMove
+
+**File yang perlu dihapus/diganti:**
+
+| File | Action |
+|------|--------|
+| `apps/bitmove/lib/prisma.ts` | ❌ Delete |
+| `apps/bitmove/lib/auth.ts` | 🔄 Rewrite |
+| `apps/bitmove/prisma/` | ❌ Delete folder |
+| `apps/bitmove/prisma.config.ts` | ❌ Delete |
+
+**Dependencies yang dihapus dari `apps/bitmove/package.json`:**
+```json
+// HAPUS
+"@prisma/adapter-pg": "^7.6.0",
+"@prisma/client": "^7.6.0",
+"@supabase/supabase-js": "^2.100.1",
+"next-auth": "^5.0.0-beta.30",
+"prisma": "^7.6.0"  // devDependencies
+```
+
+**Dependencies yang ditambahkan:**
+```json
+// TAMBAH
+"@woilaa/db-auth": "workspace:*",
+"@woilaa/db-bitmove": "workspace:*",
+"jose": "^5.9.0",
+"postgres": "^3.4.5"
+```
+
+**File baru di apps/bitmove:**
+```
+apps/bitmove/lib/
+├── db.ts          ← import { db } from "@woilaa/db-bitmove"
+├── auth-db.ts     ← import { db } from "@woilaa/db-auth"
+├── jwt.ts         ← copy dari mykanz (atau bisa jadi shared package nanti)
+└── session.ts     ← getCurrentUser() dari cookie/header
+```
+
+> **Catatan:** Pertimbangkan buat `packages/auth-utils/` di fase lanjutan untuk share jwt.ts dan session.ts antara mykanz dan bitmove — hindari duplikasi.
+
+#### 2.4 — Environment Variables Baru
+
+**`apps/mykanz/.env` (replace yang lama):**
+```
+# Database
+AUTH_DATABASE_URL="postgresql://...authdb connection string..."
+MYKANZ_DATABASE_URL="postgresql://...mykanzdb connection string..."
+
+# JWT
+JWT_SECRET="minimum-32-karakter-random-string-ganti-ini"
+JWT_REFRESH_SECRET="minimum-32-karakter-random-string-berbeda"
+
+# App
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+```
+
+**`apps/bitmove/.env` (replace yang lama):**
+```
+# Database
+AUTH_DATABASE_URL="postgresql://...authdb connection string (SAMA dengan mykanz)..."
+BITMOVE_DATABASE_URL="postgresql://...bitmovedb connection string..."
+
+# JWT
+JWT_SECRET="SAMA dengan di mykanz — harus identik"
+JWT_REFRESH_SECRET="SAMA dengan di mykanz"
+
+# App
+NEXT_PUBLIC_APP_URL="http://localhost:3001"
+```
+
+> ⚠️ **JWT_SECRET harus identik di semua app!** Karena access_token yang di-issue di mykanz harus bisa di-verify di bitmove dan sebaliknya — inilah yang membuat SSO antar app bisa bekerja.
 
 ---
 
-### FASE 7 (BONUS) — Fitur Cross-App *(Pasca Launch)*
+### FASE 3 — Migrasi API Routes: Prisma Query → Drizzle Query *(MyKanz)*
 
-> Fitur-fitur ini memperkuat konsep "Super App" dan membuat ekosistem terasa lebih terintegrasi.
+> **Tujuan:** Ganti semua `prisma.xxx.findMany()` dll. dengan query dari `@woilaa/db-mykanz`.
 
-#### 7.1 — Reward Finance dari Quest Achievement
-- Selesaikan misi tertentu di BitMove → unlock "cashback kategori" di MyKanz
-- Implementasi: Supabase Edge Function yang mendengarkan event dari BitMove → trigger update di MyKanz
+#### 3.1 — Pemetaan Prisma → Drizzle di MyKanz
 
-#### 7.2 — XP Reward dari Tabungan Target
+Setiap API route yang sebelumnya pakai Prisma harus diupdate:
+
+**Contoh perubahan:**
+```typescript
+// BEFORE (Prisma)
+import prisma from "@/lib/prisma";
+const wallets = await prisma.wallets.findMany({
+  where: { userId: session.user.id, deletedAt: null },
+});
+
+// AFTER (Drizzle)
+import { getWalletsByUserId } from "@woilaa/db-mykanz";
+const wallets = await getWalletsByUserId(userId);
+// atau akses langsung:
+import { db } from "@/lib/db";
+import { wallets } from "@woilaa/db-mykanz";
+import { eq, isNull } from "drizzle-orm";
+const result = await db
+  .select()
+  .from(wallets)
+  .where(and(eq(wallets.userId, userId), isNull(wallets.deletedAt)));
+```
+
+**Cara ambil userId setelah auth dimigrasi:**
+```typescript
+// Sebelumnya dari NextAuth session
+const session = await getServerSession(authOptions);
+const userId = session.user.id;
+
+// Setelah migrasi ke custom JWT
+import { getCurrentUser } from "@/lib/session";
+const user = await getCurrentUser(); // baca dari cookie / header x-user-id
+const userId = user.sub;
+```
+
+#### 3.2 — Checklist Route API MyKanz yang Perlu Dimigrasi
+
+Cek setiap route di `apps/mykanz/app/api/`:
+- [ ] `wallets/` — CRUD wallets
+- [ ] `categories/` — CRUD + seed categories
+- [ ] `transactions/` — CRUD fiat transactions + transfer
+- [ ] `budgets/` — CRUD budgets + progress
+- [ ] `goals/` — CRUD goals + progress
+- [ ] `assets/` — browse assets + portfolio
+- [ ] `dashboard/` — summary data untuk widget
+
+---
+
+### FASE 4 — Migrasi API Routes: Prisma Query → Drizzle Query *(BitMove)*
+
+> **Tujuan:** Ganti semua Prisma query di BitMove dengan query dari `@woilaa/db-bitmove`.
+
+#### 4.1 — Pemetaan Prisma → Drizzle di BitMove
+
+**Contoh perubahan:**
+```typescript
+// BEFORE (Prisma)
+import prisma from "@/lib/prisma";
+const profile = await prisma.profiles.findUnique({
+  where: { userId: session.user.id }
+});
+
+// AFTER (Drizzle)
+import { getProfileById } from "@woilaa/db-bitmove";
+const profile = await getProfileById(userId);
+```
+
+#### 4.2 — Checklist Route API BitMove yang Perlu Dimigrasi
+
+Cek setiap route di `apps/bitmove/app/api/`:
+- [ ] `profiles/` — get dan update profile (XP, level, streak)
+- [ ] `tasks/` — CRUD tasks + complete task + reset daily/weekly
+- [ ] `workouts/` — buat sesi / tambah exercise / complete set / finish workout
+- [ ] `programs/` — CRUD training programs + schedules
+- [ ] `rewards/` — CRUD rewards + redeem
+- [ ] `gamification/` — level up check, tier update, streak bonus
+- [ ] `dashboard/` — summary: today's tasks, active workout, streak, XP bar
+
+---
+
+### FASE 5 — Bangun `apps/hub` (Portfolio + Dashboard) *(Minggu 3–4)*
+
+> **Tujuan:** Ini adalah wajah utama dari seluruh ekosistem.
+
+#### 5.1 — Inisialisasi Hub App
+
+```bash
+cd apps/hub
+npx create-next-app@latest . --typescript --tailwind --app --no-src-dir --no-import-alias
+```
+
+**`apps/hub/package.json` (tambahkan dependencies):**
+```json
+{
+  "name": "@superapp/hub",
+  "dependencies": {
+    "@woilaa/db-auth": "workspace:*",
+    "@superapp/ui": "workspace:*",
+    "jose": "^5.9.0",
+    "postgres": "^3.4.5"
+  }
+}
+```
+
+#### 5.2 — Halaman Portfolio (Public)
+
+**Route `/` — Landing Page:**
+```
+Hero Section:
+  - Nama & Tagline (animasi GSAP / Framer Motion)
+  - Dua CTA: "Lihat Proyek" & "Login ke Platform"
+  - Background: Animated gradient / particle effect
+
+About Section:
+  - Foto + Bio
+  - Tech stack badges
+
+Projects Section:
+  - Card MyKanz (Finance App) → link ke /finance
+  - Card BitMove (RPG Fitness) → link ke /quests
+
+Skills / Timeline Section
+
+Contact Section:
+  - GitHub, LinkedIn, Email
+```
+
+**Route `/projects/[slug]` — Detail Proyek**
+
+#### 5.3 — Auth Terpusat di Hub
+
+Login/Register ada di `apps/hub`:
+- `/login` → form login → call API Hub → set cookie domain-level
+- `/register` → form register → call API Hub → auto-login
+
+**`apps/hub/app/api/auth/login/route.ts`:**
+```typescript
+// Verifikasi user dari @woilaa/db-auth
+// Set cookie: access_token (domain: .roisanwr.me di production)
+response.cookies.set("access_token", token, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+  domain: process.env.NODE_ENV === "production" ? ".roisanwr.me" : "localhost",
+  maxAge: 60 * 15, // 15 menit
+});
+```
+
+> Cookie dengan domain `.roisanwr.me` akan otomatis dibaca oleh `mykanz` (di `/finance`) dan `bitmove` (di `/quests`) — inilah mekanisme SSO-nya.
+
+#### 5.4 — Dashboard Hub (Private)
+
+**Route `/dashboard` — Command Center:**
+```
+┌────────────────────────────────────────────────────┐
+│  👋 Selamat Datang, {name}                         │
+│  {tanggal} · Winstreak: 🔥 {streak} hari           │
+├──────────────────────┬─────────────────────────────┤
+│  💰 FINANCE (MyKanz) │  ⚔️ QUESTS (BitMove)        │
+│  Total Aset: Rp X    │  Level {n} · XP: {x}/{max}  │
+│  Pengeluaran bulan   │  Quest hari ini: {n}/5 done  │
+│  ini: Rp Y           │  Winstreak: {n} hari         │
+│  [Buka Finance →]    │  [Buka Quests →]             │
+└──────────────────────┴─────────────────────────────┘
+```
+
+Data diambil paralel dari kedua API:
+```typescript
+const [financeData, questData] = await Promise.all([
+  fetch(`${process.env.MYKANZ_URL}/api/dashboard/summary`, {
+    headers: { Cookie: `access_token=${token}` }
+  }),
+  fetch(`${process.env.BITMOVE_URL}/api/dashboard/summary`, {
+    headers: { Cookie: `access_token=${token}` }
+  }),
+]);
+```
+
+#### 5.5 — Konfigurasi Multi-Zones
+
+```typescript
+// apps/hub/next.config.ts
+const nextConfig = {
+  async rewrites() {
+    return [
+      {
+        source: "/finance/:path*",
+        destination: `${process.env.MYKANZ_URL}/finance/:path*`,
+      },
+      {
+        source: "/quests/:path*",
+        destination: `${process.env.BITMOVE_URL}/quests/:path*`,
+      },
+    ];
+  },
+};
+
+// apps/mykanz/next.config.ts
+const nextConfig = {
+  basePath: "/finance",
+};
+
+// apps/bitmove/next.config.ts
+const nextConfig = {
+  basePath: "/quests",
+};
+```
+
+---
+
+### FASE 6 — Penyatuan UI/UX "Beda Rasa, Satu DNA" *(Minggu 4–5)*
+
+> **Tujuan:** User merasakan perpindahan "mode", bukan perpindahan aplikasi.
+
+#### 6.1 — Design System via CSS Variables
+
+Package `@superapp/ui` mendefinisikan interface variabel CSS:
+```css
+/* packages/ui/src/tokens.css */
+:root {
+  --color-primary: ;
+  --color-primary-hover: ;
+  --color-surface: ;
+  --color-surface-alt: ;
+  --color-text: ;
+  --color-text-muted: ;
+  --color-border: ;
+  --radius-base: ;
+  --font-sans: ;
+}
+```
+
+**MyKanz Theme** (Elegan, Profesional, Finance):
+```css
+:root {
+  --color-primary: oklch(65% 0.15 160);   /* Emerald */
+  --color-surface: oklch(98% 0.01 240);   /* Off-white */
+  --color-text: oklch(20% 0.02 240);      /* Deep slate */
+  --font-sans: 'Inter', sans-serif;
+}
+```
+
+**BitMove Theme** (Gaming, Dark, Neon):
+```css
+:root {
+  --color-primary: oklch(65% 0.2 230);    /* Neon Blue */
+  --color-surface: oklch(12% 0.02 240);   /* Near-black */
+  --color-text: oklch(95% 0.01 240);      /* Near-white */
+  --font-sans: 'Rajdhani', sans-serif;
+}
+```
+
+#### 6.2 — Animasi Transisi Mode dengan GSAP
+
+> `plan.md` menyebutkan akan pakai GSAP.
+
+```typescript
+// Transisi Finance → Quests: efek "memasuki dungeon"
+gsap.timeline()
+  .to(overlay, { opacity: 1, duration: 0.3 })
+  .add(() => router.push("/quests"))
+  .to(overlay, { opacity: 0, duration: 0.3 });
+```
+
+#### 6.3 — Persistent Bottom Navigation (Mobile)
+
+Di layar mobile, ganti sidebar dengan Bottom Nav persisten:
+```
+┌────────────────────────┐
+│     [Content Area]     │
+├────────────────────────┤
+│ 🏠 Hub │ 💰 Finance │ ⚔️ │
+└────────────────────────┘
+```
+
+---
+
+### FASE 7 — PWA & Production Deploy *(Minggu 6)*
+
+> **Tujuan:** Go live di Vercel.
+
+#### 7.1 — PWA Setup (di Hub)
+
+```bash
+cd apps/hub
+pnpm add next-pwa
+```
+
+**`apps/hub/public/manifest.json`:**
+```json
+{
+  "name": "roisanwr platform",
+  "short_name": "roisanwr",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#3b82f6",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
+```
+
+#### 7.2 — Vercel Deployment (3 Project)
+
+| Vercel Project | Root Directory | Domain |
+|----------------|----------------|--------|
+| `superapp-hub` | `apps/hub` | `roisanwr.me` |
+| `superapp-mykanz` | `apps/mykanz` | internal (via Hub rewrites) |
+| `superapp-bitmove` | `apps/bitmove` | internal (via Hub rewrites) |
+
+#### 7.3 — Environment Variables Vercel
+
+**Shared (semua app):**
+```
+JWT_SECRET=...
+JWT_REFRESH_SECRET=...
+AUTH_DATABASE_URL=...
+```
+
+**Hub:**
+```
+MYKANZ_URL=https://finance-internal.roisanwr.me
+BITMOVE_URL=https://quests-internal.roisanwr.me
+```
+
+**MyKanz:**
+```
+MYKANZ_DATABASE_URL=...
+```
+
+**BitMove:**
+```
+BITMOVE_DATABASE_URL=...
+```
+
+---
+
+### FASE 8 (BONUS) — Fitur Cross-App *(Pasca Launch)*
+
+#### 8.1 — Reward Finance dari Quest Achievement
+- Selesaikan misi di BitMove → unlock "cashback kategori" di MyKanz
+- Implementasi: API call dari BitMove ke endpoint khusus Hub yang update DB MyKanz (menggunakan service token, bukan user JWT)
+
+#### 8.2 — XP Reward dari Tabungan Target
 - Capai target saving di MyKanz → dapat XP bonus di BitMove
-- Implementasi: Webhook atau Supabase database trigger antar schema
+- Sama: API call via Hub internal service
 
-#### 7.3 — Unified Notification System
-- Satu notifikasi center di Dashboard Hub
-- "Kamu mendekati batas budget!" (dari MyKanz)
-- "Kamu belum workout hari ini!" (dari BitMove)
-- Implementasi: Push Notifications via PWA + Service Worker
+#### 8.3 — Unified Notification Center
+- Dashboard Hub polling dari kedua service
+- Push via PWA Service Worker
 
-#### 7.4 — Profile Page Publik
-Route: `roisanwr.me/u/roisan` — halaman publik yang menampilkan:
-- Level & XP BitMove (gamified profile card)
-- Total aset yang dimiliki (privacy-filtered, bukan nominal asli)
-- Winstreak & achievement badges
-- **Fungsi**: Flex untuk network, sekaligus portofolio "living proof"
+#### 8.4 — Public Profile
+- `roisanwr.me/u/roisan` → Level BitMove + streak + badges
 
 ---
 
-## ⚠️ KEPUTUSAN PENTING YANG PERLU DIDISKUSIKAN
-
-### 1. Database: Merge atau Pisah?
-
-| Opsi | Pro | Kontra |
-|------|-----|--------|
-| **Satu Supabase Project, dua Schema** (Rekomendasi) | SSO mudah, satu billing, data bisa cross-query | Migrasi lebih kompleks |
-| **Dua Supabase Project** | Lebih terisolasi, mudah dikelola | SSO lebih rumit, dua billing |
-
-### 2. Portfolio: Bagian dari Hub App atau Terpisah?
-
-| Opsi | Pro | Kontra |
-|------|-----|--------|
-| **Portfolio di dalam `apps/hub`** (Rekomendasi) | Satu domain, satu deployment | Coupling antara portofolio & dashboard |
-| **Portfolio sebagai `apps/portfolio`** | Separation of concerns | Butuh rewrite ekstra |
-
-**Rekomendasi**: Letakkan di `apps/hub`. Route `/` sampai `/projects` adalah public portfolio, route `/dashboard` ke atas butuh auth.
-
-### 3. Apakah BitMove & MyKanz Bisa Diakses Langsung dari Internet?
-
-**Rekomendasi**: Tidak. Hanya Hub yang punya custom domain publik. MyKanz dan BitMove dideploy sebagai "internal services" yang hanya bisa diakses melalui Hub rewrites. Ini lebih aman dan membuat UX lebih seamless.
-
-### 4. Apakah Cross-App Features (Fase 7) Masuk Scope MVP?
-
-Saran: Tidak. Fokus ke SSO dan multi-zones dulu. Cross-app features bisa jadi "v2".
-
----
-
-## 📅 TIMELINE REALISTIS (Revisi)
-
-| Minggu | Fase | Deliverable |
-|--------|------|-------------|
-| **0** | Perancangan | Wireframe portfolio, keputusan DB & auth strategy |
-| **1** | Monorepo Setup | Turborepo jalan, kedua app bisa di-build dari root |
-| **2** | Supabase Auth | Login/Register terpusat jalan, session tersebar ke semua app |
-| **3** | Hub App | Portfolio publik jalan + Dashboard Hub dengan widget |
-| **4** | UI/UX Unification | Tema konsisten, animasi transisi, mobile nav |
-| **5** | PWA | Install prompt jalan di Android & iOS |
-| **6** | Production Deploy | Live di `roisanwr.me` dengan custom domain |
-| **7+** | Iterasi | Cross-app features, blog, public profile |
-
----
-
-## 🏗️ KEPUTUSAN STACK FINAL
+## 🏗️ STACK FINAL (DIPERBARUI)
 
 | Concern | Teknologi | Alasan |
 |---------|-----------|--------|
-| Monorepo | Turborepo + pnpm | Cepat, caching build, standar industri |
-| Framework | Next.js 16+ (App Router) | SSR, multi-zones, sudah dipakai di kedua app |
-| Auth | Supabase Auth + `@supabase/ssr` | SSO across domains, gratis tier cukup |
-| Database | PostgreSQL via Supabase + Prisma | Sudah dipakai, familiar, type-safe |
-| Styling | Tailwind CSS v4 + CSS Variables | Theming per-app, sudah dipakai |
-| Animasi | Framer Motion atau CSS View Transitions | Transisi antar mode |
-| PWA | next-pwa | Mudah diintegrasikan dengan Next.js |
-| Deploy | Vercel | Zero-config untuk Next.js, free tier |
-| Analytics | Vercel Analytics | Sudah bundled dengan Vercel |
+| Monorepo | Turborepo + pnpm | Cepat, build caching, standar industri |
+| Framework | Next.js 16+ (App Router) | SSR, multi-zones, sudah dipakai |
+| **ORM** | **Drizzle ORM** | **Type-safe, lebih ringan dari Prisma, tanpa generate** |
+| **Auth** | **Custom JWT (jose)** | **Full kontrol, SSO via shared JWT_SECRET + cookie domain** |
+| Auth DB | `authdb` di Supabase PostgreSQL | users, sessions, app_access |
+| Finance DB | `mykanzdb` di Supabase PostgreSQL | Schema finance lengkap |
+| Quests DB | `bitmovedb` di Supabase PostgreSQL | Schema gamification lengkap |
+| Styling | Tailwind CSS v4 + CSS Variables | Theming per-app |
+| Animasi | GSAP (plan.md) | Transisi premium antar mode |
+| PWA | next-pwa | Mudah diintegrasikan |
+| Deploy | Vercel | Zero-config Next.js |
+| Analytics | Vercel Analytics | Sudah bundled |
 
 ---
 
-## 🚀 LANGKAH PERTAMA YANG BISA DILAKUKAN SEKARANG
+## 📋 CHECKLIST EKSEKUSI (PRIORITAS TERURUT)
 
-Jangan langsung coding. Lakukan ini dulu:
+### Segera (Fase 1 — DB Packages)
+- [ ] Buat `packages/db-auth/` dari `databaseNEW/authdb/`
+  - [ ] Tambah `package.json` dengan nama `@woilaa/db-auth`
+  - [ ] Buat `src/client.ts` (Drizzle instance)
+  - [ ] Buat `drizzle.config.ts`
+  - [ ] Buat `tsconfig.json`
+- [ ] Buat `packages/db-mykanz/` dari `databaseNEW/mykanzdb/`
+  - [ ] Tambah `package.json` dengan nama `@woilaa/db-mykanz`
+  - [ ] Buat `src/client.ts`
+  - [ ] Buat `drizzle.config.ts`
+  - [ ] Buat `tsconfig.json`
+- [ ] Buat `packages/db-bitmove/` dari `databaseNEW/db-bitmove/`
+  - [ ] Tambah `package.json` dengan nama `@woilaa/db-bitmove`
+  - [ ] Buat `src/client.ts`
+  - [ ] Buat `drizzle.config.ts`
+  - [ ] Buat `tsconfig.json`
+- [ ] Jalankan `pnpm install` dari root
+- [ ] Verifikasi semua package bisa di-resolve
 
-1. **Buat akun Supabase** dan setup project baru (gratis).
-2. **Buat repository baru** di GitHub/GitLab: `roisanwr-platform` (atau nama pilihanmu).
-3. **Buat wireframe kasar** untuk Portfolio Landing Page (bisa pakai Figma, Excalidraw, atau kertas).
-4. **Diskusikan keputusan di bagian "⚠️ Keputusan Penting"** sebelum mulai coding.
+### Minggu 1 (Fase 2 — Migrasi Auth)
+- [ ] Setup JWT helper (`lib/jwt.ts`) di mykanz
+- [ ] Buat API route auth baru di mykanz (`/api/auth/login`, `/register`, `/logout`, `/refresh`)
+- [ ] Hapus Prisma + NextAuth dari mykanz
+- [ ] Update middleware mykanz ke custom JWT
+- [ ] Lakukan hal yang sama untuk bitmove
+- [ ] Test: login → dapat cookie → akses protected route
+
+### Minggu 2 (Fase 3–4 — Migrasi API Routes)
+- [ ] Migrasi semua API route MyKanz dari Prisma ke Drizzle
+- [ ] Migrasi semua API route BitMove dari Prisma ke Drizzle
+- [ ] Test end-to-end: semua fitur mykanz & bitmove berjalan normal
+
+### Minggu 3 (Fase 5 — Hub App)
+- [ ] Inisialisasi `apps/hub`
+- [ ] Bangun Portfolio Landing Page
+- [ ] Integrasi auth terpusat di Hub
+- [ ] Bangun Dashboard Hub dengan widget summary
+
+### Minggu 4 (Fase 6 — UI/UX)
+- [ ] Lengkapi `@superapp/ui` dengan komponen shared
+- [ ] Implementasi CSS variable theming per app
+- [ ] Implementasi animasi transisi GSAP
+
+### Minggu 5–6 (Fase 7 — PWA + Deploy)
+- [ ] Setup PWA di Hub
+- [ ] Deploy 3 project di Vercel
+- [ ] Setup custom domain
+- [ ] End-to-end test production
 
 ---
 
-## 📝 CATATAN PORTOFOLIO
+## ⚠️ POIN KRITIS YANG PERLU DIPERHATIKAN
 
-Dokumentasikan proses ini sejak sekarang:
-- Tulis `ARCHITECTURE.md` di root monorepo
-- Update README tiap fase selesai
-- Screenshot before/after migration
-- Catat "lessons learned" tiap minggu
+### 1. Drizzle Client — Jangan Buat Koneksi Berlebih
+Di Next.js, setiap hot reload bisa buat koneksi baru ke PostgreSQL. Pakai pola singleton:
 
-**Ini adalah bukti nyata kemampuan engineering-mu.** Arsitektur Monorepo + Multi-Zones + SSO + PWA adalah level yang bahkan banyak developer senior belum pernah implement secara penuh.
+```typescript
+// packages/db-mykanz/src/client.ts
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "./schema/schema";
+
+// Singleton untuk development (hindari koneksi berlebih saat hot reload)
+const globalForDb = globalThis as unknown as { mykanzClient: ReturnType<typeof postgres> };
+
+const client = globalForDb.mykanzClient ?? postgres(process.env.MYKANZ_DATABASE_URL!);
+
+if (process.env.NODE_ENV !== "production") {
+  globalForDb.mykanzClient = client;
+}
+
+export const db = drizzle(client, { schema });
+```
+
+### 2. JWT_SECRET Harus Identik di Semua App
+Karena login bisa terjadi di Hub atau di masing-masing app, dan token harus bisa diverifikasi di semua app — pastikan nilai `JWT_SECRET` di `.env` masing-masing app **identik**.
+
+### 3. Cross-DB userId — Tidak Ada FK, Validasi di App Layer
+- `wallets.userId` di mykanzdb **bukan FK** ke authdb — nilainya dari JWT payload
+- Validasi: cukup `eq(wallets.userId, userId)` dari JWT, tidak perlu join ke authdb
+- Ini adalah trade-off dari multi-DB architecture — konsisten, tapi tidak ada referential integrity di level DB
+
+### 4. Cookie Domain untuk SSO
+- Development: cookie tanpa domain (berlaku untuk `localhost` saja)
+- Production: cookie dengan `domain: ".roisanwr.me"` agar berlaku di semua subdomain
+
+### 5. Drizzle Query API vs Raw SQL
+- Pakai **Drizzle Query API** (`db.query.wallets.findMany(...)`) untuk query sederhana
+- Pakai **Drizzle ORM API** (`db.select().from()...`) untuk query kompleks dengan join
+- Pakai raw SQL (`db.execute(sql`...`)`) hanya untuk operasi yang benar-benar tidak bisa di-express
 
 ---
 
-*Dibuat: 8 April 2026 · Platform: roisanwr.me*
+## 📅 TIMELINE REALISTIS (DIPERBARUI)
+
+| Minggu | Fase | Deliverable |
+|--------|------|-------------|
+| **Sekarang** | 1 — DB Packages | 3 Drizzle packages jalan, bisa di-import dari apps |
+| **1** | 2 — Auth Migrasi | Login/Register pakai custom JWT, Prisma & NextAuth dihapus |
+| **2** | 3–4 — API Migrasi | Semua API route berjalan dengan Drizzle query |
+| **3** | 5 — Hub App | Landing page + Dashboard Hub + Multi-zones |
+| **4** | 6 — UI/UX | Theming, GSAP transitions, Mobile nav |
+| **5** | 7 — Deploy | PWA + Vercel production + custom domain |
+| **6+** | 8 — Iterasi | Cross-app features, blog, public profile |
+
+---
+
+*Diperbarui: 13 April 2026 · Platform: roisanwr.me · ORM: Drizzle (migrasi dari Prisma)*

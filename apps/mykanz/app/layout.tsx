@@ -2,7 +2,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import { auth } from '@/lib/auth'
+import { getCurrentUser } from '@/lib/session'
 import DashboardLayout from '@/components/DashboardLayout' // Import komponen mesin kita!
 import { FeedbackProvider } from '@/components/FeedbackProvider'
 
@@ -18,15 +18,15 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  const session = await auth()
+  const user = await getCurrentUser()
 
   return (
     <html lang="id" className={`${inter.className} light`}>
       <body>
         <FeedbackProvider>
           {/* Kalau user login, bungkus dengan DashboardLayout. Kalau nggak (misal di halaman login), biarkan kosong */}
-          {session?.user ? (
-            <DashboardLayout user={session.user}>
+          {user ? (
+            <DashboardLayout user={user}>
               {children}
             </DashboardLayout>
           ) : (

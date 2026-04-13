@@ -1,6 +1,9 @@
 // app/page.tsx
-import { auth } from '@/lib/auth';
-import prisma from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/session';
+import { db } from '@/lib/db';
+import { getWalletsWithBalance, getPortfolioSummary } from '@woilaa/db-mykanz';
+import { fiatTransactions, assetTransactions, categories, wallets } from '@woilaa/db-mykanz/schema/schema';
+import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -15,87 +18,91 @@ const formatRupiah = (angka: number) => {
 };
 
 export default async function DashboardPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect('/login');
-  const userId = session.user.id;
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+  const userId = user.sub;
 
   // 1. Fetch Total Wallet (Cash) Balance
-  const walletsDataRaw = await prisma.$queryRaw<any[]>`
-    SELECT COALESCE(SUM(wb.balance), 0) as total_balance
-    FROM wallets w
-    LEFT JOIN wallet_balances wb ON w.id = wb.wallet_id
-    WHERE w.user_id = ${userId}::uuid AND w.deleted_at IS NULL
-  `;
-  const totalCash = Number(walletsDataRaw[0]?.total_balance || 0);
+  const walletsDataRaw = await getWalletsWithBalance(userId);
+  const totalCash = walletsDataRaw.reduce((acc, w) => acc + Number(w.balance), 0);
 
   // 2. Fetch Total Investment Portfolio Balance
-  const portfolios = await prisma.user_portfolios.findMany({
-    where: { user_id: userId }
-  });
-  const totalInvestment = portfolios.reduce((acc, port) => {
-    const units = Number(port.total_units || 0);
-    const avgPrice = Number(port.average_buy_price || 0);
-    return acc + (units * avgPrice);
-  }, 0);
+  const portfolioSummary = await getPortfolioSummary(userId);
+  const totalInvestment = Number(portfolioSummary.totalCurrentValue || 0);
 
   // 3. Fetch Monthly Cashflow (Fiat Transactions)
   const now = new Date();
   const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
-  const monthlyTransactions = await prisma.fiat_transactions.findMany({
-    where: {
-      user_id: userId,
-      transaction_date: { gte: firstDayOfMonth, lte: lastDayOfMonth },
-    }
-  });
+  const monthlyTx = await db.select()
+    .from(fiatTransactions)
+    .where(and(
+       eq(fiatTransactions.userId, userId),
+       gte(fiatTransactions.transactionDate, firstDayOfMonth),
+       lte(fiatTransactions.transactionDate, lastDayOfMonth)
+    ));
 
   let monthlyIncome = 0;
   let monthlyExpense = 0;
-  monthlyTransactions.forEach(tx => {
+  monthlyTx.forEach(tx => {
     const amount = Number(tx.amount || 0);
-    if (tx.transaction_type === 'PEMASUKAN') monthlyIncome += amount;
-    if (tx.transaction_type === 'PENGELUARAN') monthlyExpense += amount;
+    if (tx.transactionType === 'PEMASUKAN') monthlyIncome += amount;
+    if (tx.transactionType === 'PENGELUARAN') monthlyExpense += amount;
   });
 
   const netWorth = totalCash + totalInvestment;
 
   // 4. Fetch ALL fiat transactions for the activity chart
-  const allFiatTransactions = await prisma.fiat_transactions.findMany({
-    where: { user_id: userId },
-    select: { transaction_date: true, transaction_type: true, amount: true },
-    orderBy: { transaction_date: 'asc' }
-  });
+  const allFiatTransactions = await db.select({
+     transaction_date: fiatTransactions.transactionDate,
+     transaction_type: fiatTransactions.transactionType,
+     amount: fiatTransactions.amount
+  }).from(fiatTransactions).where(eq(fiatTransactions.userId, userId));
 
   // 5. Fetch ALL investment transactions for the activity chart
-  const allInvestmentTransactions = await prisma.asset_transactions.findMany({
-    where: { user_id: userId },
-    select: { transaction_date: true, transaction_type: true, total_amount: true },
-    orderBy: { transaction_date: 'asc' }
-  });
+  const allInvestmentTransactions = await db.select({
+     transaction_date: assetTransactions.transactionDate,
+     transaction_type: assetTransactions.transactionType,
+     total_amount: assetTransactions.totalAmount
+  }).from(assetTransactions).where(eq(assetTransactions.userId, userId));
 
   // Serialize dates to ISO strings for client component transfer
-  const fiatForChart = allFiatTransactions.map((t: { transaction_date: Date | null; transaction_type: string; amount: any }) => ({
+  const fiatForChart = allFiatTransactions.map(t => ({
     transaction_date: t.transaction_date?.toISOString() ?? new Date().toISOString(),
     transaction_type: t.transaction_type,
     amount: Number(t.amount || 0)
   }));
-  const investForChart = allInvestmentTransactions.map((t: { transaction_date: Date | null; transaction_type: string; total_amount: any }) => ({
+  const investForChart = allInvestmentTransactions.map(t => ({
     transaction_date: t.transaction_date?.toISOString() ?? new Date().toISOString(),
     transaction_type: t.transaction_type,
     amount: Number(t.total_amount || 0)
   }));
 
   // 6. Fetch 5 Recent Transactions for display
-  const recentTransactions = await prisma.fiat_transactions.findMany({
-    where: { user_id: userId },
-    orderBy: { transaction_date: 'desc' },
-    take: 5,
-    include: {
-      categories: true,
-      wallets_fiat_transactions_wallet_idTowallets: true
-    }
-  });
+  // Karena schema.ts kita tanpa relations config, kita lakukan manual join untuk mengambil relasi kategori & wallet
+  const recentTransactionsRaw = await db.execute(sql\`
+    SELECT 
+      ft.id, ft.transaction_type, ft.amount, ft.transaction_date, ft.description,
+      c.name as category_name,
+      w.name as wallet_name, w.currency as wallet_currency
+    FROM fiat_transactions ft
+    LEFT JOIN categories c ON ft.category_id = c.id
+    LEFT JOIN wallets w ON ft.wallet_id = w.id
+    WHERE ft.user_id = \${userId}::uuid
+    ORDER BY ft.transaction_date DESC
+    LIMIT 5
+  \`);
+  
+  const recentTransactions = recentTransactionsRaw.rows.map((row: any) => ({
+    id: row.id,
+    transaction_type: row.transaction_type,
+    amount: row.amount,
+    transaction_date: new Date(row.transaction_date),
+    description: row.description,
+    categories: { name: row.category_name },
+    wallets_fiat_transactions_wallet_idTowallets: { name: row.wallet_name, currency: row.wallet_currency }
+  }));
 
   return (
     <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500">
@@ -114,7 +121,7 @@ export default async function DashboardPage() {
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight drop-shadow-lg">
               {formatRupiah(netWorth)}
             </h1>
-            <p className="text-indigo-300 dark:text-slate-400 text-sm mt-3">Halo, {session.user.name}! 👑</p>
+            <p className="text-indigo-300 dark:text-slate-400 text-sm mt-3">Halo, {user.name}! 👑</p>
           </div>
           
           <div className="flex gap-3 flex-wrap">

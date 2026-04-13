@@ -1,5 +1,7 @@
-import { auth } from '@/lib/auth';
-import prisma from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/session';
+import { db } from '@/lib/db';
+import { assets as assetsSchema, userPortfolios } from '@woilaa/db-mykanz/schema/schema';
+import { eq, desc } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 import { Rocket, Box, Database, TrendingUp, HelpCircle } from 'lucide-react';
 import AddAssetModal from '@/components/AddAssetModal';
@@ -30,18 +32,42 @@ function getAssetTypeName(type: string) {
 }
 
 export default async function PortfolioAssetsPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+  const userId = user.sub;
 
-  const assets = await prisma.assets.findMany({
-    where: { user_id: session.user.id },
-    orderBy: { created_at: 'desc' },
-    include: {
-      user_portfolios: {
-        where: { user_id: session.user.id }
-      }
+  const assetsDataRaw = await db.select({
+      assets: assetsSchema,
+      user_portfolios: userPortfolios
+    })
+    .from(assetsSchema)
+    .leftJoin(userPortfolios, eq(assetsSchema.id, userPortfolios.assetId))
+    .where(eq(assetsSchema.userId, userId))
+    .orderBy(desc(assetsSchema.createdAt));
+
+  // Reconstruct Prisma-like nested structure
+  const assetsMap = new Map<string, any>();
+  assetsDataRaw.forEach((row) => {
+    const a = row.assets;
+    const p = row.user_portfolios;
+    if (!assetsMap.has(a.id)) {
+       assetsMap.set(a.id, {
+         id: a.id,
+         name: a.name,
+         asset_type: a.assetType,
+         ticker_symbol: a.tickerSymbol,
+         unit_name: a.unitName,
+         user_portfolios: p ? [{
+           total_units: p.totalUnits,
+           average_buy_price: p.averageBuyPrice,
+           id: p.id,
+           asset_id: p.assetId
+         }] : []
+       });
     }
   });
+
+  const assets = Array.from(assetsMap.values());
 
   // Calculate total active portfolio value (Estimasi)
   let totalPortfolioValue = 0;

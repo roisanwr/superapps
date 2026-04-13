@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     });
 
     // Auto-grant akses ke semua app
-    await grantAppAccess(newUser.id, "mykanz");
+    await grantAppAccess(newUser.id, "bitmove");
     await grantAppAccess(newUser.id, "bitmove");
 
     return NextResponse.json(

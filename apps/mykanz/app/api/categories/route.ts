@@ -1,143 +1,115 @@
 // app/api/categories/route.ts
-import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth';
-import { fiat_tx_type } from '@prisma/client';
+import { NextResponse } from "next/server";
+import {
+  createCategory,
+  getCategoriesByUserId,
+  updateCategory,
+  deleteCategory,
+  validateCategoryAccess,
+} from "@woilaa/db-mykanz";
+import { requireUser } from "@/lib/session";
+import type { categoryTypeEnum } from "@woilaa/db-mykanz";
 
-// POST: Create a new category
+type CategoryType = "INCOME" | "EXPENSE" | "TRANSFER";
+
 export async function POST(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+    const user = await requireUser();
     const body = await req.json();
-    const { name, type } = body as { name: string; type: fiat_tx_type };
+    const { name, type } = body as { name: string; type: CategoryType };
 
-    if (!name || name.trim() === '') {
+    if (!name || name.trim() === "") {
       return NextResponse.json(
-        { error: 'Nama kategori wajib diisi!' },
+        { error: "Nama kategori wajib diisi!" },
         { status: 400 }
       );
     }
 
     if (!type) {
       return NextResponse.json(
-        { error: 'Tipe kategori (Pemasukan/Pengeluaran) wajib dipilih!' },
+        { error: "Tipe kategori wajib dipilih!" },
         { status: 400 }
       );
     }
 
-    const newCategory = await prisma.categories.create({
-      data: {
-        user_id: session.user.id,
-        name: name.trim(),
-        type,
-      },
+    const newCategory = await createCategory({
+      userId: user.sub,
+      name: name.trim(),
+      type,
     });
 
     return NextResponse.json(
-      { success: true, message: 'Kategori berhasil dibuat!', data: newCategory },
+      { success: true, message: "Kategori berhasil dibuat!", data: newCategory },
       { status: 201 }
     );
-  } catch (error) {
-    console.error('Gagal membuat kategori:', error);
-    return NextResponse.json(
-      { error: 'Terjadi kesalahan pada server.' },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    console.error("Gagal membuat kategori:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
 
-// GET: Get all categories for the current user
 export async function GET() {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const user = await requireUser();
+    const categories = await getCategoriesByUserId(user.sub);
+    return NextResponse.json({ success: true, data: categories });
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    const categories = await prisma.categories.findMany({
-      where: { user_id: session.user.id, deleted_at: null },
-      orderBy: { name: 'asc' },
-    });
-
-    return NextResponse.json({ success: true, data: categories }, { status: 200 });
-  } catch (error) {
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
 
-// PUT: Update an existing category
 export async function PUT(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+    const user = await requireUser();
     const body = await req.json();
-    const { id, name, type } = body as { id: string; name: string; type: fiat_tx_type };
+    const { id, name, type } = body as { id: string; name: string; type: CategoryType };
 
     if (!id || !name || !type) {
-      return NextResponse.json(
-        { error: 'Data tidak lengkap!' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Data tidak lengkap!" }, { status: 400 });
     }
 
-    const updatedCategory = await prisma.categories.update({
-      where: { id, user_id: session.user.id },
-      data: { name: name.trim(), type },
-    });
+    const hasAccess = await validateCategoryAccess(id, user.sub);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Kategori tidak ditemukan" }, { status: 404 });
+    }
 
-    return NextResponse.json(
-      { success: true, message: 'Kategori berhasil diupdate!', data: updatedCategory },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error('Gagal update kategori:', error);
-    return NextResponse.json(
-      { error: 'Gagal memperbarui kategori.' },
-      { status: 500 }
-    );
+    const updated = await updateCategory(id, { name: name.trim(), type });
+    return NextResponse.json({ success: true, data: updated });
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
 
-// DELETE: Soft-delete a category
-// Usage: DELETE /api/categories?id=<id>
 export async function DELETE(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+    const user = await requireUser();
     const { searchParams } = new URL(req.url);
-    const id = searchParams.get('id');
+    const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json(
-        { error: 'ID Kategori wajib dikirim!' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "ID Kategori wajib dikirim!" }, { status: 400 });
     }
 
-    await prisma.categories.update({
-      where: { id, user_id: session.user.id },
-      data: { deleted_at: new Date() },
-    });
+    const hasAccess = await validateCategoryAccess(id, user.sub);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Kategori tidak ditemukan" }, { status: 404 });
+    }
 
-    return NextResponse.json(
-      { success: true, message: 'Kategori berhasil dihapus!' },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error('Gagal menghapus kategori:', error);
-    return NextResponse.json(
-      { error: 'Gagal menghapus kategori.' },
-      { status: 500 }
-    );
+    await deleteCategory(id);
+    return NextResponse.json({ success: true, message: "Kategori berhasil dihapus!" });
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message === "UNAUTHORIZED") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

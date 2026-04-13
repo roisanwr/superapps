@@ -47,7 +47,7 @@ export async function getPortfolioSummary(
     `
   );
 
-  const row = result.rows[0] as any;
+  const row = result[0] as any;
   const invested = parseFloat(row.total_invested ?? "0");
   const currentValue = parseFloat(row.total_current_value ?? "0");
   const pnl = parseFloat(row.total_unrealized_pnl ?? "0");
@@ -166,8 +166,8 @@ export async function getPortfolioDetail(
     `
   );
 
-  if (!result.rows.length) return null;
-  const row = result.rows[0] as any;
+  if (!result.length) return null;
+  const row = result[0] as any;
 
   // Ambil histori transaksi aset
   const transactions = await db

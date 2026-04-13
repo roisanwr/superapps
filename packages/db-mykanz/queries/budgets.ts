@@ -246,7 +246,7 @@ export async function getBudgetProgress(
     `
   );
 
-  const spent = parseFloat((result.rows[0] as any).spent ?? "0");
+  const spent = parseFloat((result[0] as any)?.spent ?? "0");
   const limit = parseFloat(budget.amount);
   const remaining = Math.max(0, limit - spent);
   const percentage = limit > 0 ? Math.min(100, (spent / limit) * 100) : 0;

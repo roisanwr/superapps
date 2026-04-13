@@ -78,17 +78,14 @@ export async function POST(req: Request) {
       );
     }
 
-    await createBudget(
-      user.sub,
-      {
-        amount: String(amount),
-        period,
-        startDate,
-        endDate,
-      },
-      category_ids,
-      wallet_ids || []
-    );
+    await createBudget(user.sub, {
+      amount: String(amount),
+      period,
+      startDate,
+      endDate,
+      categoryIds: category_ids,
+      walletIds: wallet_ids || []
+    });
 
     return NextResponse.json(
       { success: true, message: "Anggaran berhasil dibuat!" },

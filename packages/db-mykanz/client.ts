@@ -20,6 +20,7 @@ const client =
     max: 10,
     idle_timeout: 20,
     connect_timeout: 10,
+    prepare: false, // Required for Supabase Transaction Pooler (port 6543)
   });
 
 if (process.env.NODE_ENV !== "production") {

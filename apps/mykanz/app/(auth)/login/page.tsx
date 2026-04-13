@@ -1,14 +1,15 @@
 "use client";
 
-import { signIn } from "next-auth/react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import Link from "next/link";
 
 export default function LoginPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   // Ambil pesan error dari URL jika ada
   const errorUrl = searchParams.get("error"); 
+  const [errorMsg, setErrorMsg] = useState<string | null>(errorUrl);
   
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -17,15 +18,27 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setErrorMsg(null);
 
-    // Memanggil signIn dari next-auth/react
-    await signIn("credentials", {
-      email,
-      password,
-      redirectTo: "/", // Ke dashboard jika sukses
-    });
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
 
-    setLoading(false);
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrorMsg(data.error || "Gagal login. Periksa email dan password.");
+      } else {
+        router.push("/");
+      }
+    } catch (err: any) {
+      setErrorMsg("Terjadi kesalahan sistem. Coba lagi nanti.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -35,13 +48,11 @@ export default function LoginPage() {
         <p className="text-gray-500 text-center mb-8">Masuk untuk kelola cuanmu!</p>
 
         {/* --- AREA AHA! MOMEN: NOTIFIKASI ERROR --- */}
-        {errorUrl && (
+        {errorMsg && (
           <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-r-lg animate-pulse">
             <p className="font-bold">Waduh!</p>
             <p className="text-sm">
-              {errorUrl === "CredentialsSignin" 
-                ? "Email atau Password salah, cek lagi ya Bosku!" 
-                : "Terjadi kesalahan sistem, coba sesaat lagi."}
+              {errorMsg}
             </p>
           </div>
         )}

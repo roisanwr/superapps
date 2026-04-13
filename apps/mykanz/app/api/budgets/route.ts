@@ -1,28 +1,64 @@
 // app/api/budgets/route.ts
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth';
-import { Prisma } from '@prisma/client';
+import { db } from '@/lib/db';
+import { budgets, budgetCategories, categories } from '@woilaa/db-mykanz/schema/schema';
+import { eq, desc, and } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/session';
 
 // GET: Fetch all budgets for the current user
 export async function GET() {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const budgets = await prisma.budgets.findMany({
-      where: { user_id: session.user.id },
-      orderBy: { created_at: 'desc' },
-      include: {
-        budget_categories: {
-          include: { categories: { select: { id: true, name: true } } },
-        },
-      },
-    });
+    const budgetsDataRaw = await db.select({
+      id: budgets.id,
+      amount: budgets.amount,
+      period: budgets.period,
+      start_date: budgets.startDate,
+      end_date: budgets.endDate,
+      user_id: budgets.userId,
+      created_at: budgets.createdAt,
+      budget_categories: {
+        category_id: categories.id,
+        category_name: categories.name,
+      }
+    })
+    .from(budgets)
+    .leftJoin(budgetCategories, eq(budgets.id, budgetCategories.budgetId))
+    .leftJoin(categories, eq(budgetCategories.categoryId, categories.id))
+    .where(eq(budgets.userId, user.sub))
+    .orderBy(desc(budgets.createdAt));
 
-    return NextResponse.json({ success: true, data: budgets }, { status: 200 });
+    // group by budget.id so that budget_categories becomes an array
+    const budgetsMap = new Map();
+    for (const raw of budgetsDataRaw) {
+      if (!budgetsMap.has(raw.id)) {
+        budgetsMap.set(raw.id, {
+          id: raw.id,
+          amount: Number(raw.amount),
+          period: raw.period,
+          start_date: raw.start_date,
+          end_date: raw.end_date,
+          user_id: raw.user_id,
+          created_at: raw.created_at,
+          budget_categories: []
+        });
+      }
+      if (raw.budget_categories.category_id) {
+        budgetsMap.get(raw.id).budget_categories.push({
+          categories: {
+            id: raw.budget_categories.category_id,
+            name: raw.budget_categories.category_name
+          }
+        });
+      }
+    }
+    const budgetsList = Array.from(budgetsMap.values());
+
+    return NextResponse.json({ success: true, data: budgetsList }, { status: 200 });
   } catch (error) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
@@ -32,12 +68,12 @@ export async function GET() {
 // Body: { amount, period, date, category_ids: string[] }
 export async function POST(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = session.user.id;
+    const userId = user.sub;
     const body = await req.json();
     const { amount, period, date, category_ids } = body;
 
@@ -55,9 +91,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const parsedAmount = new Prisma.Decimal(String(amount));
+    const parsedAmount = parseFloat(String(amount));
 
-    if (parsedAmount.lte(0)) {
+    if (parsedAmount <= 0) {
       return NextResponse.json(
         { error: 'Limit Anggaran harus lebih dari 0!' },
         { status: 400 }
@@ -94,23 +130,24 @@ export async function POST(req: Request) {
       );
     }
 
-    await prisma.$transaction(async (tx) => {
-      const budget = await tx.budgets.create({
-        data: {
-          user_id: userId,
+    await db.transaction(async (tx) => {
+      const budgetResult = await tx.insert(budgets).values({
+          userId: userId,
           amount: parsedAmount,
           period,
-          start_date: startDate,
-          end_date: endDate,
-        },
-      });
+          startDate,
+          endDate,
+      }).returning();
+      
+      const bgt = budgetResult[0];
 
-      await tx.budget_categories.createMany({
-        data: category_ids.map((catId: string) => ({
-          budget_id: budget.id,
-          category_id: catId,
-        })),
-      });
+      if (category_ids && category_ids.length > 0) {
+        const catInserts = category_ids.map((catId: string) => ({
+            budgetId: bgt.id,
+            categoryId: catId
+        }));
+        await tx.insert(budgetCategories).values(catInserts);
+      }
     });
 
     return NextResponse.json(
@@ -130,8 +167,8 @@ export async function POST(req: Request) {
 // Usage: DELETE /api/budgets?id=<id>
 export async function DELETE(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -145,9 +182,8 @@ export async function DELETE(req: Request) {
       );
     }
 
-    const budget = await prisma.budgets.findUnique({
-      where: { id, user_id: session.user.id },
-    });
+    const budgetResult = await db.select().from(budgets).where(and(eq(budgets.id, id), eq(budgets.userId, user.sub)));
+    const budget = budgetResult[0];
 
     if (!budget) {
       return NextResponse.json(
@@ -156,7 +192,7 @@ export async function DELETE(req: Request) {
       );
     }
 
-    await prisma.budgets.delete({ where: { id } });
+    await db.delete(budgets).where(eq(budgets.id, id));
 
     return NextResponse.json(
       { success: true, message: 'Anggaran berhasil dihapus!' },

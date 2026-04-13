@@ -1,26 +1,26 @@
 // app/api/users/me/route.ts
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth';
+import { db } from '@/lib/db';
+import { users } from '@woilaa/db-mykanz/schema/schema';
+import { eq } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/session';
 import bcrypt from 'bcryptjs';
 
 // GET: Get the currently logged-in user's profile
 export async function GET() {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const userSession = await getCurrentUser();
+    if (!userSession) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = await prisma.users.findUnique({
-      where: { id: session.user.id },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        created_at: true,
-      },
-    });
+    const userResult = await db.select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        created_at: users.createdAt,
+    }).from(users).where(eq(users.id, userSession.sub));
+    const user = userResult[0];
 
     if (!user) {
       return NextResponse.json(
@@ -38,8 +38,8 @@ export async function GET() {
 // PUT: Update the currently logged-in user's profile
 export async function PUT(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const userSession = await getCurrentUser();
+    if (!userSession) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -53,15 +53,14 @@ export async function PUT(req: Request) {
       );
     }
 
-    const updatedUser = await prisma.users.update({
-      where: { id: session.user.id },
-      data: { name: name.trim() },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-      },
+    const updatedUserResult = await db.update(users).set({ name: name.trim() })
+    .where(eq(users.id, userSession.sub))
+    .returning({
+        id: users.id,
+        name: users.name,
+        email: users.email,
     });
+    const updatedUser = updatedUserResult[0];
 
     return NextResponse.json(
       { success: true, message: 'Profil berhasil diupdate!', data: updatedUser },
@@ -79,8 +78,8 @@ export async function PUT(req: Request) {
 // DELETE: Permanently delete the currently logged-in user's account
 export async function DELETE(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const userSession = await getCurrentUser();
+    if (!userSession) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -91,22 +90,20 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Konfirmasi password wajib diisi.' }, { status: 400 });
     }
 
-    const user = await prisma.users.findUnique({
-      where: { id: session.user.id },
-      select: { password_hash: true },
-    });
+    const userResult = await db.select({ passwordHash: users.passwordHash }).from(users).where(eq(users.id, userSession.sub));
+    const user = userResult[0];
 
-    if (!user?.password_hash) {
+    if (!user?.passwordHash) {
       return NextResponse.json({ error: 'User tidak ditemukan.' }, { status: 404 });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password_hash);
+    const isMatch = await bcrypt.compare(password, user.passwordHash as string);
     if (!isMatch) {
       return NextResponse.json({ error: 'Password tidak sesuai.' }, { status: 400 });
     }
 
     // Cascade delete — all related data (wallets, transactions, etc.) will be removed
-    await prisma.users.delete({ where: { id: session.user.id } });
+    await db.delete(users).where(eq(users.id, userSession.sub));
 
     return NextResponse.json({ success: true, message: 'Akun berhasil dihapus.' });
   } catch (error) {

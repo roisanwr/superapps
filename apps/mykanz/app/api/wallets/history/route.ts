@@ -1,14 +1,16 @@
 // app/api/wallets/history/route.ts
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth';
+import { db } from '@/lib/db';
+import { eq, and, or, desc, aliasedTable } from 'drizzle-orm';
+import { fiatTransactions, categories, wallets } from '@woilaa/db-mykanz/schema/schema';
+import { getCurrentUser } from '@/lib/session';
 
 // GET: Fetch transaction history for a specific wallet
 // Usage: GET /api/wallets/history?walletId=<id>
 export async function GET(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -22,23 +24,29 @@ export async function GET(req: Request) {
       );
     }
 
-    const transactions = await prisma.fiat_transactions.findMany({
-      where: {
-        user_id: session.user.id,
-        OR: [{ wallet_id: walletId }, { to_wallet_id: walletId }],
-      },
-      orderBy: { transaction_date: 'desc' },
-      take: 50,
-      include: {
-        categories: { select: { name: true } },
-        wallets_fiat_transactions_to_wallet_idTowallets: {
-          select: { name: true },
-        },
-        wallets_fiat_transactions_wallet_idTowallets: {
-          select: { name: true },
-        },
-      },
-    });
+    const toWallets = aliasedTable(wallets, 'to_wallets');
+    const transactions = await db.select({
+       id: fiatTransactions.id,
+       transaction_date: fiatTransactions.transactionDate,
+       amount: fiatTransactions.amount,
+       description: fiatTransactions.description,
+       transaction_type: fiatTransactions.transactionType,
+       wallet_id: fiatTransactions.walletId,
+       to_wallet_id: fiatTransactions.toWalletId,
+       categories: { name: categories.name },
+       wallets_fiat_transactions_to_wallet_idTowallets: { name: toWallets.name },
+       wallets_fiat_transactions_wallet_idTowallets: { name: wallets.name }
+    })
+    .from(fiatTransactions)
+    .leftJoin(categories, eq(fiatTransactions.categoryId, categories.id))
+    .leftJoin(wallets, eq(fiatTransactions.walletId, wallets.id))
+    .leftJoin(toWallets, eq(fiatTransactions.toWalletId, toWallets.id))
+    .where(and(
+       eq(fiatTransactions.userId, user.sub),
+       or(eq(fiatTransactions.walletId, walletId), eq(fiatTransactions.toWalletId, walletId))
+    ))
+    .orderBy(desc(fiatTransactions.transactionDate))
+    .limit(50);
 
     const formattedData = transactions.map((tx) => {
       const isSource = tx.wallet_id === walletId;

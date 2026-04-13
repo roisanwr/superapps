@@ -1,49 +1,54 @@
 // app/api/transactions/route.ts
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth';
-import { fiat_tx_type } from '@prisma/client';
+import { db } from '@/lib/db';
+import { fiatTransactions, categories, wallets } from '@woilaa/db-mykanz/schema/schema';
+import { eq, or, desc, and, aliasedTable } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/session';
 
 // GET: Fetch transactions with optional filters
 // Usage: GET /api/transactions?type=SEMUA&walletId=<id>
 export async function GET(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { searchParams } = new URL(req.url);
-    const filterType = searchParams.get('type') as fiat_tx_type | 'SEMUA' | null;
+    const filterType = searchParams.get('type');
     const filterWalletId = searchParams.get('walletId');
 
-    const whereClause: any = { user_id: session.user.id };
+    const conditions = [eq(fiatTransactions.userId, user.sub)];
 
     if (filterType && filterType !== 'SEMUA') {
-      whereClause.transaction_type = filterType;
+      conditions.push(eq(fiatTransactions.transactionType, filterType as any));
     }
 
     if (filterWalletId) {
-      whereClause.OR = [
-        { wallet_id: filterWalletId },
-        { to_wallet_id: filterWalletId },
-      ];
+      conditions.push(or(eq(fiatTransactions.walletId, filterWalletId), eq(fiatTransactions.toWalletId, filterWalletId)));
     }
 
-    const transactions = await prisma.fiat_transactions.findMany({
-      where: whereClause,
-      orderBy: { transaction_date: 'desc' },
-      take: 100,
-      include: {
-        categories: { select: { name: true, type: true } },
-        wallets_fiat_transactions_wallet_idTowallets: {
-          select: { name: true, currency: true },
-        },
-        wallets_fiat_transactions_to_wallet_idTowallets: {
-          select: { name: true, currency: true },
-        },
-      },
-    });
+    const toWallets = aliasedTable(wallets, 'to_wallets');
+    
+    const transactions = await db.select({
+      id: fiatTransactions.id,
+      transaction_date: fiatTransactions.transactionDate,
+      amount: fiatTransactions.amount,
+      description: fiatTransactions.description,
+      transaction_type: fiatTransactions.transactionType,
+      wallet_id: fiatTransactions.walletId,
+      to_wallet_id: fiatTransactions.toWalletId,
+      categories: { name: categories.name, type: categories.type },
+      wallets_fiat_transactions_to_wallet_idTowallets: { name: toWallets.name, currency: toWallets.currency },
+      wallets_fiat_transactions_wallet_idTowallets: { name: wallets.name, currency: wallets.currency }
+    })
+    .from(fiatTransactions)
+    .leftJoin(categories, eq(fiatTransactions.categoryId, categories.id))
+    .leftJoin(wallets, eq(fiatTransactions.walletId, wallets.id))
+    .leftJoin(toWallets, eq(fiatTransactions.toWalletId, toWallets.id))
+    .where(and(...conditions))
+    .orderBy(desc(fiatTransactions.transactionDate))
+    .limit(100);
 
     return NextResponse.json({ success: true, data: transactions }, { status: 200 });
   } catch (error) {
@@ -55,8 +60,8 @@ export async function GET(req: Request) {
 // POST: Create a new transaction
 export async function POST(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -84,12 +89,12 @@ export async function POST(req: Request) {
       : undefined;
 
     const payload: any = {
-      user_id: session.user.id,
-      transaction_type,
-      wallet_id,
+      userId: user.sub,
+      transactionType: transaction_type,
+      walletId: wallet_id,
       amount,
       description,
-      ...(txDate && { transaction_date: txDate }),
+      ...(txDate && { transactionDate: txDate }),
     };
 
     if (transaction_type === 'TRANSFER') {
@@ -100,48 +105,43 @@ export async function POST(req: Request) {
         );
       }
 
-      payload.to_wallet_id = to_wallet_id;
+      payload.toWalletId = to_wallet_id;
 
-      const prismaOps: any[] = [prisma.fiat_transactions.create({ data: payload })];
+      await db.transaction(async (tx) => {
+        await tx.insert(fiatTransactions).values(payload);
 
-      if (admin_fee > 0) {
-        let adminCat = await prisma.categories.findFirst({
-          where: {
-            user_id: session.user.id,
-            name: 'Biaya Admin',
-            type: 'PENGELUARAN',
-          },
-        });
-
-        if (!adminCat) {
-          adminCat = await prisma.categories.create({
-            data: {
-              user_id: session.user.id,
-              name: 'Biaya Admin',
-              type: 'PENGELUARAN',
-            },
+        if (admin_fee > 0) {
+          let adminCat = await tx.select().from(categories).where(and(
+             eq(categories.userId, user.sub),
+             eq(categories.name, 'Biaya Admin'),
+             eq(categories.type, 'PENGELUARAN')
+          ));
+  
+          let catId = adminCat[0]?.id;
+  
+          if (!adminCat || adminCat.length === 0) {
+            const newCat = await tx.insert(categories).values({
+                userId: user.sub,
+                name: 'Biaya Admin',
+                type: 'PENGELUARAN',
+            }).returning();
+            catId = newCat[0].id;
+          }
+  
+          await tx.insert(fiatTransactions).values({
+                userId: user.sub,
+                transactionType: 'PENGELUARAN',
+                walletId: wallet_id,
+                categoryId: catId,
+                amount: admin_fee,
+                description: `Biaya Admin Transfer${description ? ' - ' + description : ''}`,
+                ...(txDate && { transactionDate: txDate }),
           });
         }
-
-        prismaOps.push(
-          prisma.fiat_transactions.create({
-            data: {
-              user_id: session.user.id,
-              transaction_type: 'PENGELUARAN',
-              wallet_id,
-              category_id: adminCat.id,
-              amount: admin_fee,
-              description: `Biaya Admin Transfer${description ? ' - ' + description : ''}`,
-              ...(txDate && { transaction_date: txDate }),
-            },
-          })
-        );
-      }
-
-      await prisma.$transaction(prismaOps);
+      });
     } else {
-      if (category_id) payload.category_id = category_id;
-      await prisma.fiat_transactions.create({ data: payload });
+      if (category_id) payload.categoryId = category_id;
+      await db.insert(fiatTransactions).values(payload);
     }
 
     return NextResponse.json(
@@ -161,8 +161,8 @@ export async function POST(req: Request) {
 // Usage: DELETE /api/transactions?id=<id>
 export async function DELETE(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -176,9 +176,7 @@ export async function DELETE(req: Request) {
       );
     }
 
-    await prisma.fiat_transactions.delete({
-      where: { id, user_id: session.user.id },
-    });
+    await db.delete(fiatTransactions).where(and(eq(fiatTransactions.id, id), eq(fiatTransactions.userId, user.sub)));
 
     return NextResponse.json(
       { success: true, message: 'Transaksi berhasil dihapus!' },

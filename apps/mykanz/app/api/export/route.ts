@@ -1,7 +1,9 @@
 // app/api/export/route.ts
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth';
+import { db } from '@/lib/db';
+import { getCurrentUser } from '@/lib/session';
+import { fiatTransactions, assetTransactions, userPortfolios, assets, categories, wallets } from '@woilaa/db-mykanz/schema/schema';
+import { eq, desc, aliasedTable } from 'drizzle-orm';
 
 function escapeCsv(val: string | number | null | undefined): string {
   if (val === null || val === undefined) return '';
@@ -18,29 +20,34 @@ function rowToCsv(fields: (string | number | null | undefined)[]): string {
 
 export async function GET(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { searchParams } = new URL(req.url);
     const type = searchParams.get('type') ?? 'transaksi';
 
-    const userId = session.user.id;
+    const userId = user.sub;
 
     if (type === 'investasi') {
       // Export investasi (asset transactions)
-      const rows = await prisma.asset_transactions.findMany({
-        where: { user_id: userId },
-        orderBy: { transaction_date: 'desc' },
-        include: {
-          user_portfolios: {
-            include: {
-              assets: { select: { name: true, ticker_symbol: true, asset_type: true, currency: true } },
-            },
-          },
-        },
-      });
+      const rows = await db.select({
+        transaction_date: assetTransactions.transactionDate,
+        transaction_type: assetTransactions.transactionType,
+        units: assetTransactions.units,
+        price_per_unit: assetTransactions.pricePerUnit,
+        total_amount: assetTransactions.totalAmount,
+        notes: assetTransactions.notes,
+        user_portfolios: {
+           assets: { name: assets.name, ticker_symbol: assets.tickerSymbol, asset_type: assets.assetType, currency: assets.currency }
+        }
+      })
+      .from(assetTransactions)
+      .leftJoin(userPortfolios, eq(assetTransactions.portfolioId, userPortfolios.id))
+      .leftJoin(assets, eq(userPortfolios.assetId, assets.id))
+      .where(eq(assetTransactions.userId, userId))
+      .orderBy(desc(assetTransactions.transactionDate));
 
       const headers = ['Tanggal', 'Aset', 'Ticker', 'Tipe Aset', 'Jenis Transaksi', 'Jumlah Unit', 'Harga per Unit', 'Total', 'Mata Uang', 'Catatan'];
       const lines = [
@@ -70,15 +77,22 @@ export async function GET(req: Request) {
     }
 
     // Default: export fiat transactions
-    const rows = await prisma.fiat_transactions.findMany({
-      where: { user_id: userId },
-      orderBy: { transaction_date: 'desc' },
-      include: {
-        categories: { select: { name: true } },
-        wallets_fiat_transactions_wallet_idTowallets: { select: { name: true, currency: true } },
-        wallets_fiat_transactions_to_wallet_idTowallets: { select: { name: true } },
-      },
-    });
+    const toWallets = aliasedTable(wallets, 'toWallets');
+    const rows = await db.select({
+      transaction_date: fiatTransactions.transactionDate,
+      transaction_type: fiatTransactions.transactionType,
+      amount: fiatTransactions.amount,
+      description: fiatTransactions.description,
+      categories: { name: categories.name },
+      wallets_fiat_transactions_wallet_idTowallets: { name: wallets.name, currency: wallets.currency },
+      wallets_fiat_transactions_to_wallet_idTowallets: { name: toWallets.name },
+    })
+    .from(fiatTransactions)
+    .leftJoin(categories, eq(fiatTransactions.categoryId, categories.id))
+    .leftJoin(wallets, eq(fiatTransactions.walletId, wallets.id))
+    .leftJoin(toWallets, eq(fiatTransactions.toWalletId, toWallets.id))
+    .where(eq(fiatTransactions.userId, userId))
+    .orderBy(desc(fiatTransactions.transactionDate));
 
     const headers = ['Tanggal', 'Jenis', 'Dompet', 'Ke Dompet', 'Kategori', 'Jumlah', 'Mata Uang', 'Deskripsi'];
     const lines = [

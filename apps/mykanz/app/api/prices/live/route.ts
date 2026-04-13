@@ -4,8 +4,10 @@
 // Normalisasi ke IDR menggunakan kurs cache 1 jam
 
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth';
+import { db } from '@/lib/db';
+import { userPortfolios, assets, assetValuations, wallets, walletBalances } from '@woilaa/db-mykanz/schema/schema';
+import { eq, inArray, desc, sql, and } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/session';
 import globalCache from '@/lib/cache';
 
 // ─── Types ──────────────────────────────────────────────
@@ -151,20 +153,30 @@ async function getStockPrice(
 // ─── GET Handler ─────────────────────────────────────────
 export async function GET() {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = session.user.id;
+    const userId = user.sub;
 
     // 1. Ambil semua portofolio user beserta data aset
-    const portfolios = await prisma.user_portfolios.findMany({
-      where: { user_id: userId },
-      include: {
-        assets: true,
-      },
-    });
+    const portfolios = await db.select({
+      id: userPortfolios.id,
+      user_id: userPortfolios.userId,
+      asset_id: userPortfolios.assetId,
+      total_units: userPortfolios.totalUnits,
+      average_buy_price: userPortfolios.averageBuyPrice,
+      assets: {
+        id: assets.id,
+        asset_type: assets.assetType,
+        ticker_symbol: assets.tickerSymbol,
+        currency: assets.currency,
+      }
+    })
+    .from(userPortfolios)
+    .innerJoin(assets, eq(userPortfolios.assetId, assets.id))
+    .where(eq(userPortfolios.userId, userId));
 
     // 2. Kelompokkan aset berdasarkan tipe
     const cryptoAssets: { assetId: string; ticker: string }[] = [];
@@ -211,17 +223,24 @@ export async function GET() {
     );
 
     // 4. Fetch harga manual dari DB (latest_asset_prices view via asset_valuations)
-    const manualPricesRaw = manualAssets.length > 0
-      ? await prisma.asset_valuations.findMany({
-          where: { asset_id: { in: manualAssets } },
-          orderBy: { recorded_at: 'desc' },
-          distinct: ['asset_id'],
-        })
-      : [];
+    const manualPricesRaw: any[] = [];
+    if (manualAssets.length > 0) {
+      const allManuals = await db.select()
+        .from(assetValuations)
+        .where(inArray(assetValuations.assetId, manualAssets))
+        .orderBy(desc(assetValuations.recordedAt));
+      const seen = new Set();
+      for (const row of allManuals) {
+        if (!seen.has(row.assetId)) {
+           manualPricesRaw.push(row);
+           seen.add(row.assetId);
+        }
+      }
+    }
 
     const manualPriceMap = new Map<string, number>();
     for (const v of manualPricesRaw) {
-      manualPriceMap.set(v.asset_id, Number(v.price_per_unit));
+      manualPriceMap.set(v.assetId, Number(v.pricePerUnit));
     }
 
     // 5. Normalisasi harga ke IDR & build result
@@ -293,12 +312,10 @@ export async function GET() {
     }
 
     // 7. Hitung saldo kas (pakai query yang sama seperti dashboard)
-    const cashResult = await prisma.$queryRaw<any[]>`
-      SELECT COALESCE(SUM(wb.balance), 0) as total_balance
-      FROM wallets w
-      LEFT JOIN wallet_balances wb ON w.id = wb.wallet_id
-      WHERE w.user_id = ${userId}::uuid AND w.deleted_at IS NULL
-    `;
+    const cashResult = await db.select({ total_balance: sql`COALESCE(SUM(${walletBalances.balance}), 0)` })
+       .from(wallets)
+       .leftJoin(walletBalances, eq(wallets.id, walletBalances.walletId))
+       .where(and(eq(wallets.userId, userId), sql`${wallets.deletedAt} IS NULL`));
     const totalCash = Number(cashResult[0]?.total_balance || 0);
 
     // 8. Kirim response

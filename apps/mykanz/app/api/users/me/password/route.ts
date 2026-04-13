@@ -1,13 +1,15 @@
 // app/api/users/me/password/route.ts
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth';
+import { db } from '@/lib/db';
+import { users } from '@woilaa/db-mykanz/schema/schema';
+import { eq } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/session';
 import bcrypt from 'bcryptjs';
 
 export async function PUT(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const userSession = await getCurrentUser();
+    if (!userSession) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -25,26 +27,21 @@ export async function PUT(req: Request) {
       );
     }
 
-    const user = await prisma.users.findUnique({
-      where: { id: session.user.id },
-      select: { password_hash: true },
-    });
+    const userResult = await db.select({ passwordHash: users.passwordHash }).from(users).where(eq(users.id, userSession.sub));
+    const user = userResult[0];
 
-    if (!user?.password_hash) {
+    if (!user?.passwordHash) {
       return NextResponse.json({ error: 'User tidak ditemukan.' }, { status: 404 });
     }
 
-    const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
+    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash as string);
     if (!isMatch) {
       return NextResponse.json({ error: 'Password lama tidak sesuai.' }, { status: 400 });
     }
 
     const newHash = await bcrypt.hash(newPassword, 12);
 
-    await prisma.users.update({
-      where: { id: session.user.id },
-      data: { password_hash: newHash },
-    });
+    await db.update(users).set({ passwordHash: newHash }).where(eq(users.id, userSession.sub));
 
     return NextResponse.json({ success: true, message: 'Password berhasil diubah!' });
   } catch (error) {

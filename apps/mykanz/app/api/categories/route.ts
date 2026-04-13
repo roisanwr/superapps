@@ -1,19 +1,20 @@
 // app/api/categories/route.ts
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth';
-import { fiat_tx_type } from '@prisma/client';
+import { db } from '@/lib/db';
+import { categories } from '@woilaa/db-mykanz/schema/schema';
+import { eq, and, isNull, asc } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/session';
 
 // POST: Create a new category
 export async function POST(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const body = await req.json();
-    const { name, type } = body as { name: string; type: fiat_tx_type };
+    const { name, type } = body as { name: string; type: any };
 
     if (!name || name.trim() === '') {
       return NextResponse.json(
@@ -29,16 +30,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const newCategory = await prisma.categories.create({
-      data: {
-        user_id: session.user.id,
+    const newCategory = await db.insert(categories).values({
+        userId: user.sub,
         name: name.trim(),
         type,
-      },
-    });
+    }).returning();
 
     return NextResponse.json(
-      { success: true, message: 'Kategori berhasil dibuat!', data: newCategory },
+      { success: true, message: 'Kategori berhasil dibuat!', data: newCategory[0] },
       { status: 201 }
     );
   } catch (error) {
@@ -53,17 +52,17 @@ export async function POST(req: Request) {
 // GET: Get all categories for the current user
 export async function GET() {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const categories = await prisma.categories.findMany({
-      where: { user_id: session.user.id, deleted_at: null },
-      orderBy: { name: 'asc' },
-    });
+    const categoriesList = await db.select()
+      .from(categories)
+      .where(and(eq(categories.userId, user.sub), isNull(categories.deletedAt)))
+      .orderBy(asc(categories.name));
 
-    return NextResponse.json({ success: true, data: categories }, { status: 200 });
+    return NextResponse.json({ success: true, data: categoriesList }, { status: 200 });
   } catch (error) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
@@ -72,13 +71,13 @@ export async function GET() {
 // PUT: Update an existing category
 export async function PUT(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const body = await req.json();
-    const { id, name, type } = body as { id: string; name: string; type: fiat_tx_type };
+    const { id, name, type } = body as { id: string; name: string; type: any };
 
     if (!id || !name || !type) {
       return NextResponse.json(
@@ -87,13 +86,13 @@ export async function PUT(req: Request) {
       );
     }
 
-    const updatedCategory = await prisma.categories.update({
-      where: { id, user_id: session.user.id },
-      data: { name: name.trim(), type },
-    });
+    const updatedCategory = await db.update(categories)
+      .set({ name: name.trim(), type })
+      .where(and(eq(categories.id, id), eq(categories.userId, user.sub)))
+      .returning();
 
     return NextResponse.json(
-      { success: true, message: 'Kategori berhasil diupdate!', data: updatedCategory },
+      { success: true, message: 'Kategori berhasil diupdate!', data: updatedCategory[0] },
       { status: 200 }
     );
   } catch (error) {
@@ -109,8 +108,8 @@ export async function PUT(req: Request) {
 // Usage: DELETE /api/categories?id=<id>
 export async function DELETE(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -124,10 +123,9 @@ export async function DELETE(req: Request) {
       );
     }
 
-    await prisma.categories.update({
-      where: { id, user_id: session.user.id },
-      data: { deleted_at: new Date() },
-    });
+    await db.update(categories)
+      .set({ deletedAt: new Date() })
+      .where(and(eq(categories.id, id), eq(categories.userId, user.sub)));
 
     return NextResponse.json(
       { success: true, message: 'Kategori berhasil dihapus!' },

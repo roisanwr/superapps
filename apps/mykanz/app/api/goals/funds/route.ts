@@ -1,14 +1,15 @@
 // app/api/goals/funds/route.ts
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth';
-import { Prisma } from '@prisma/client';
+import { db } from '@/lib/db';
+import { goals, fiatTransactions, categories } from '@woilaa/db-mykanz/schema/schema';
+import { eq, and } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/session';
 
 // POST: Add funds to a goal (tabungan)
 export async function POST(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -22,18 +23,17 @@ export async function POST(req: Request) {
       );
     }
 
-    const parsedAmount = new Prisma.Decimal(String(amount));
+    const parsedAmount = parseFloat(String(amount));
 
-    if (parsedAmount.lte(0)) {
+    if (parsedAmount <= 0) {
       return NextResponse.json(
         { error: 'Nominal tabungan harus lebih dari 0!' },
         { status: 400 }
       );
     }
 
-    const goal = await (prisma.goals as any).findUnique({
-      where: { id: goal_id, user_id: session.user.id },
-    }) as any;
+    const goalResult = await db.select().from(goals).where(and(eq(goals.id, goal_id), eq(goals.userId, user.sub)));
+    const goal = goalResult[0];
 
     if (!goal) {
       return NextResponse.json(
@@ -52,45 +52,34 @@ export async function POST(req: Request) {
       );
     }
 
-    const userId = session.user.id as string;
-
     const getOrCreateCategory = async (
       catName: string,
-      catType: 'PEMASUKAN' | 'PENGELUARAN'
+      catType: any,
+      txCtx?: any
     ) => {
-      let cat = await prisma.categories.findFirst({
-        where: { user_id: userId, name: catName, type: catType },
-      });
-      if (!cat) {
-        cat = await prisma.categories.create({
-          data: { user_id: userId, name: catName, type: catType },
-        });
+      const q = (txCtx || db);
+      let catRes = await q.select().from(categories).where(and(eq(categories.userId, user.sub), eq(categories.name, catName), eq(categories.type, catType)));
+      if (catRes.length === 0) {
+        catRes = await q.insert(categories).values({ userId: user.sub, name: catName, type: catType }).returning();
       }
-      return cat.id;
+      return catRes[0].id;
     };
 
-    await prisma.$transaction(async (tx) => {
-      const catId = await getOrCreateCategory('Tabungan Impian', 'PENGELUARAN');
+    await db.transaction(async (tx) => {
+      const catId = await getOrCreateCategory('Tabungan Impian', 'PENGELUARAN', tx);
 
-      await tx.fiat_transactions.create({
-        data: {
-          user_id: userId,
-          wallet_id,
-          category_id: catId,
-          transaction_type: 'PENGELUARAN',
+      await tx.insert(fiatTransactions).values({
+          userId: user.sub,
+          walletId: wallet_id,
+          categoryId: catId,
+          transactionType: 'PENGELUARAN',
           amount: parsedAmount,
           description: `Nabung untuk: ${goal.name}`,
-        },
       });
 
-      const newAmount = (
-        goal.current_amount || new Prisma.Decimal(0)
-      ).add(parsedAmount);
+      const newAmount = Number(goal.currentAmount || 0) + parsedAmount;
 
-      await tx.goals.update({
-        where: { id: goal_id },
-        data: { current_amount: newAmount, updated_at: new Date() },
-      });
+      await tx.update(goals).set({ currentAmount: newAmount, updatedAt: new Date() }).where(eq(goals.id, goal_id));
     });
 
     return NextResponse.json(

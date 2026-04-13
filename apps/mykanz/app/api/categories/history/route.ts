@@ -1,14 +1,16 @@
 // app/api/categories/history/route.ts
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth';
+import { db } from '@/lib/db';
+import { categories, fiatTransactions, wallets } from '@woilaa/db-mykanz/schema/schema';
+import { eq, and, desc, gte, lte } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/session';
 
 // GET: Fetch transaction history for a specific category
 // Usage: GET /api/categories/history?categoryId=<id>&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
 export async function GET(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -25,9 +27,8 @@ export async function GET(req: Request) {
     }
 
     // Validate ownership
-    const category = await prisma.categories.findFirst({
-      where: { id: categoryId, user_id: session.user.id },
-    });
+    const categoryResult = await db.select().from(categories).where(and(eq(categories.id, categoryId), eq(categories.userId, user.sub)));
+    const category = categoryResult[0];
 
     if (!category) {
       return NextResponse.json(
@@ -36,30 +37,36 @@ export async function GET(req: Request) {
       );
     }
 
-    const whereClause: any = {
-      user_id: session.user.id,
-      category_id: categoryId,
-    };
+    const conditions = [
+      eq(fiatTransactions.userId, user.sub),
+      eq(fiatTransactions.categoryId, categoryId)
+    ];
 
-    if (startDate || endDate) {
-      whereClause.transaction_date = {};
-      if (startDate) {
-        whereClause.transaction_date.gte = new Date(`${startDate}T00:00:00.000Z`);
-      }
-      if (endDate) {
-        whereClause.transaction_date.lte = new Date(`${endDate}T23:59:59.999Z`);
-      }
+    if (startDate) {
+      conditions.push(gte(fiatTransactions.transactionDate, new Date(`${startDate}T00:00:00.000Z`)));
+    }
+    if (endDate) {
+      conditions.push(lte(fiatTransactions.transactionDate, new Date(`${endDate}T23:59:59.999Z`)));
     }
 
-    const transactions = await prisma.fiat_transactions.findMany({
-      where: whereClause,
-      orderBy: { transaction_date: 'desc' },
-      include: {
-        wallets_fiat_transactions_wallet_idTowallets: {
-          select: { name: true, currency: true },
-        },
-      },
-    });
+    const transactionsRaw = await db.select({
+        id: fiatTransactions.id,
+        transaction_date: fiatTransactions.transactionDate,
+        amount: fiatTransactions.amount,
+        transaction_type: fiatTransactions.transactionType,
+        description: fiatTransactions.description,
+        wallets_fiat_transactions_wallet_idTowallets: { name: wallets.name, currency: wallets.currency },
+    })
+    .from(fiatTransactions)
+    .leftJoin(wallets, eq(fiatTransactions.walletId, wallets.id))
+    .where(and(...conditions))
+    .orderBy(desc(fiatTransactions.transactionDate));
+    
+    // Map decimals to numbers for JSON serialization
+    const transactions = transactionsRaw.map((tx: any) => ({
+      ...tx,
+      amount: Number(tx.amount)
+    }));
 
     return NextResponse.json(
       {

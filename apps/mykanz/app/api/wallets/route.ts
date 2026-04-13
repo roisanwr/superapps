@@ -1,14 +1,16 @@
 // app/api/wallets/route.ts
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth'; // Sesuaikan lokasi import auth kamu ya
+import { db } from '@/lib/db';
+import { wallets } from '@woilaa/db-mykanz/schema/schema';
+import { eq, and, isNull, asc } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/session';
 
 // 🚀 POST: Untuk Membuat Wallet Baru (Pengganti createWallet)
 export async function POST(req: Request) {
   try {
     // 1. Cek Autentikasi (Sama kayak sebelumnya)
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       // Bedanya: Kita kembalikan error dengan HTTP Status 401 (Unauthorized)
       return NextResponse.json({ error: 'Kamu harus login dulu ya!' }, { status: 401 });
     }
@@ -23,19 +25,17 @@ export async function POST(req: Request) {
     }
 
     // 3. Simpan ke Database
-    const newWallet = await prisma.wallets.create({
-      data: {
-        user_id: session.user.id,
+    const newWallet = await db.insert(wallets).values({
+        userId: user.sub,
         name,
         type,
         currency,
-      },
-    });
+    }).returning();
 
     // 4. BERHASIL! Kita kembalikan data yang baru dibuat dengan Status 201 (Created)
     // PERHATIKAN: Tidak ada lagi revalidatePath! API murni nggak peduli sama tampilan UI.
     return NextResponse.json(
-      { success: true, message: 'Dompet berhasil dibuat!', data: newWallet },
+      { success: true, message: 'Dompet berhasil dibuat!', data: newWallet[0] },
       { status: 201 }
     );
 
@@ -49,15 +49,15 @@ export async function POST(req: Request) {
 // 🚀 GET: Untuk Mengambil Daftar Wallet (Contoh tambahan biar komplit!)
 export async function GET(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const wallets = await prisma.wallets.findMany({
-      where: { user_id: session.user.id, deleted_at: null },
-      orderBy: { created_at: 'desc' }
-    });
+    const walletsList = await db.select()
+      .from(wallets)
+      .where(and(eq(wallets.userId, user.sub), isNull(wallets.deletedAt)))
+      .orderBy(asc(wallets.createdAt));
 
-    return NextResponse.json({ success: true, data: wallets }, { status: 200 });
+    return NextResponse.json({ success: true, data: walletsList }, { status: 200 });
   } catch (error) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
@@ -66,8 +66,8 @@ export async function GET(req: Request) {
 // 🚀 PUT: Untuk Mengupdate Dompet (Pengganti updateWallet)
 export async function PUT(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Kamu harus login dulu ya!' }, { status: 401 });
     }
 
@@ -80,13 +80,13 @@ export async function PUT(req: Request) {
     }
 
     // Update ke Database
-    const updatedWallet = await prisma.wallets.update({
-      where: { id: id, user_id: session.user.id }, // Pastikan cuma dompet miliknya sendiri yang bisa diedit
-      data: { name, type, updated_at: new Date() },
-    });
+    const updatedWallet = await db.update(wallets)
+      .set({ name, type, updatedAt: new Date() })
+      .where(and(eq(wallets.id, id), eq(wallets.userId, user.sub)))
+      .returning();
 
     return NextResponse.json(
-      { success: true, message: 'Dompet berhasil diupdate!', data: updatedWallet },
+      { success: true, message: 'Dompet berhasil diupdate!', data: updatedWallet[0] },
       { status: 200 } // Status 200 berarti "OK"
     );
   } catch (error) {
@@ -98,8 +98,8 @@ export async function PUT(req: Request) {
 // 🚀 DELETE: Untuk Menghapus Dompet (Pengganti deleteWallet)
 export async function DELETE(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Kamu harus login dulu ya!' }, { status: 401 });
     }
 
@@ -112,10 +112,9 @@ export async function DELETE(req: Request) {
     }
 
     // Soft Delete (hanya update deleted_at, sesuai logikamu sebelumnya)
-    await prisma.wallets.update({
-      where: { id: id, user_id: session.user.id },
-      data: { deleted_at: new Date(), updated_at: new Date() },
-    });
+    await db.update(wallets)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(wallets.id, id), eq(wallets.userId, user.sub)));
 
     return NextResponse.json(
       { success: true, message: 'Dompet berhasil dihapus!' },

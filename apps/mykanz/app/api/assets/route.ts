@@ -1,23 +1,24 @@
 // app/api/assets/route.ts
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth';
-import { asset_type } from '@prisma/client';
+import { db } from '@/lib/db';
+import { assets } from '@woilaa/db-mykanz/schema/schema';
+import { eq, and, desc, asc } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/session';
 
 // GET: Fetch all assets for the current user
 export async function GET() {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const assets = await prisma.assets.findMany({
-      where: { user_id: session.user.id },
-      orderBy: { name: 'asc' },
-    });
+    const assetsList = await db.select()
+      .from(assets)
+      .where(eq(assets.userId, user.sub))
+      .orderBy(asc(assets.name));
 
-    return NextResponse.json({ success: true, data: assets }, { status: 200 });
+    return NextResponse.json({ success: true, data: assetsList }, { status: 200 });
   } catch (error) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
@@ -26,8 +27,8 @@ export async function GET() {
 // POST: Create a new asset
 export async function POST(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
       currency = 'IDR',
     } = body as {
       name: string;
-      asset_type: asset_type;
+      asset_type: any;
       ticker_symbol?: string;
       unit_name?: string;
       currency?: string;
@@ -56,10 +57,10 @@ export async function POST(req: Request) {
     }
 
     if (ticker_symbol) {
-      const existing = await prisma.assets.findFirst({
-        where: { user_id: session.user.id, asset_type: type, ticker_symbol },
-      });
-      if (existing) {
+      const existing = await db.select()
+        .from(assets)
+        .where(and(eq(assets.userId, user.sub), eq(assets.assetType, type), eq(assets.tickerSymbol, ticker_symbol)));
+      if (existing.length > 0) {
         return NextResponse.json(
           { error: `Ticker ${ticker_symbol} sudah ada untuk aset jenis ${type}!` },
           { status: 409 }
@@ -67,16 +68,15 @@ export async function POST(req: Request) {
       }
     }
 
-    const newAsset = await prisma.assets.create({
-      data: {
-        user_id: session.user.id,
+    const newAssetResult = await db.insert(assets).values({
+        userId: user.sub,
         name: name.trim(),
-        asset_type: type,
-        ticker_symbol,
-        unit_name,
+        assetType: type,
+        tickerSymbol: ticker_symbol,
+        unitName: unit_name,
         currency,
-      },
-    });
+    }).returning();
+    const newAsset = newAssetResult[0];
 
     return NextResponse.json(
       { success: true, message: 'Aset berhasil dibuat!', data: newAsset },
@@ -94,8 +94,8 @@ export async function POST(req: Request) {
 // PUT: Update an existing asset
 export async function PUT(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -111,9 +111,8 @@ export async function PUT(req: Request) {
 
     const ticker_symbol = rawTicker ? rawTicker.trim().toUpperCase() : null;
 
-    const asset = await prisma.assets.findFirst({
-      where: { id, user_id: session.user.id },
-    });
+    const assetResult = await db.select().from(assets).where(and(eq(assets.id, id), eq(assets.userId, user.sub)));
+    const asset = assetResult[0];
 
     if (!asset) {
       return NextResponse.json(
@@ -122,15 +121,13 @@ export async function PUT(req: Request) {
       );
     }
 
-    const updatedAsset = await prisma.assets.update({
-      where: { id },
-      data: {
+    const updatedAssetResult = await db.update(assets).set({
         name: name.trim(),
-        ticker_symbol,
-        unit_name,
-        updated_at: new Date(),
-      },
-    });
+        tickerSymbol: ticker_symbol,
+        unitName: unit_name,
+        updatedAt: new Date(),
+    }).where(eq(assets.id, id)).returning();
+    const updatedAsset = updatedAssetResult[0];
 
     return NextResponse.json(
       { success: true, message: 'Aset berhasil diupdate!', data: updatedAsset },
@@ -152,8 +149,8 @@ export async function PUT(req: Request) {
 // Usage: DELETE /api/assets?id=<id>
 export async function DELETE(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -167,9 +164,7 @@ export async function DELETE(req: Request) {
       );
     }
 
-    await prisma.assets.delete({
-      where: { id, user_id: session.user.id },
-    });
+    await db.delete(assets).where(and(eq(assets.id, id), eq(assets.userId, user.sub)));
 
     return NextResponse.json(
       { success: true, message: 'Aset berhasil dihapus!' },

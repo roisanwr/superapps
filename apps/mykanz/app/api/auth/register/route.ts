@@ -1,6 +1,8 @@
 // app/api/auth/register/route.ts
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { db } from '@/lib/db';
+import { users } from '@woilaa/db-mykanz/schema/schema';
+import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 
 // POST: Register a new user
@@ -17,9 +19,8 @@ export async function POST(req: Request) {
     }
 
     // Check if email already exists
-    const existingUser = await prisma.users.findUnique({
-      where: { email },
-    });
+    const existingUserResult = await db.select().from(users).where(eq(users.email, email));
+    const existingUser = existingUserResult[0];
 
     if (existingUser) {
       return NextResponse.json(
@@ -32,13 +33,12 @@ export async function POST(req: Request) {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create new user
-    const newUser = await prisma.users.create({
-      data: {
+    const newUserResult = await db.insert(users).values({
         name,
         email,
-        password_hash: hashedPassword,
-      },
-    });
+        passwordHash: hashedPassword,
+    }).returning();
+    const newUser = newUserResult[0];
 
     return NextResponse.json(
       {

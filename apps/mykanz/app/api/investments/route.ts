@@ -1,28 +1,41 @@
 // app/api/investments/route.ts
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth';
-import { asset_tx_type, Prisma } from '@prisma/client';
+import { db } from '@/lib/db';
+import { assetTransactions, userPortfolios, assets, categories, fiatTransactions } from '@woilaa/db-mykanz/schema/schema';
+import { eq, desc, and } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/session';
 
 // GET: Fetch all investment transactions for the current user
 export async function GET() {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const transactions = await prisma.asset_transactions.findMany({
-      where: { user_id: session.user.id },
-      orderBy: { transaction_date: 'desc' },
-      include: {
-        user_portfolios: {
-          include: {
-            assets: { select: { name: true, ticker_symbol: true, asset_type: true, unit_name: true } },
-          },
-        },
-      },
-    });
+    const transactions = await db.select({
+      id: assetTransactions.id,
+      transaction_date: assetTransactions.transactionDate,
+      transaction_type: assetTransactions.transactionType,
+      units: assetTransactions.units,
+      price_per_unit: assetTransactions.pricePerUnit,
+      total_amount: assetTransactions.totalAmount,
+      notes: assetTransactions.notes,
+      user_portfolios: {
+        id: userPortfolios.id,
+        assets: {
+          name: assets.name,
+          ticker_symbol: assets.tickerSymbol,
+          asset_type: assets.assetType,
+          unit_name: assets.unitName,
+        }
+      }
+    })
+    .from(assetTransactions)
+    .leftJoin(userPortfolios, eq(assetTransactions.portfolioId, userPortfolios.id))
+    .leftJoin(assets, eq(userPortfolios.assetId, assets.id))
+    .where(eq(assetTransactions.userId, user.sub))
+    .orderBy(desc(assetTransactions.transactionDate));
 
     return NextResponse.json({ success: true, data: transactions }, { status: 200 });
   } catch (error) {
@@ -33,12 +46,12 @@ export async function GET() {
 // POST: Record an investment transaction (BUY or SELL)
 export async function POST(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = session.user.id;
+    const userId = user.sub;
     const body = await req.json();
     const {
       transaction_type,
@@ -68,13 +81,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const type = transaction_type as asset_tx_type;
-    const parsedUnits = new Prisma.Decimal(String(units));
-    const parsedPrice = new Prisma.Decimal(String(price_per_unit || 0));
-    const totalAmount = parsedUnits.mul(parsedPrice);
+    const type = transaction_type;
+    const parsedUnits = parseFloat(String(units));
+    const parsedPrice = parseFloat(String(price_per_unit || 0));
+    const totalAmount = parsedUnits * parsedPrice;
     const txDate = new Date(transaction_date);
 
-    if (parsedUnits.lte(0) || parsedPrice.lt(0)) {
+    if (parsedUnits <= 0 || parsedPrice < 0) {
       return NextResponse.json(
         { error: 'Unit harus lebih dari 0 dan Harga tidak boleh negatif!' },
         { status: 400 }
@@ -82,9 +95,8 @@ export async function POST(req: Request) {
     }
 
     // Get or create portfolio entry
-    let portfolio = await prisma.user_portfolios.findUnique({
-      where: { user_id_asset_id: { user_id: userId, asset_id } },
-    });
+    let portfolioResult = await db.select().from(userPortfolios).where(and(eq(userPortfolios.userId, userId), eq(userPortfolios.assetId, asset_id)));
+    let portfolio = portfolioResult[0];
 
     if (!portfolio) {
       if (type === 'JUAL') {
@@ -93,15 +105,16 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
-      portfolio = await prisma.user_portfolios.create({
-        data: { user_id: userId, asset_id, total_units: 0, average_buy_price: 0 },
-      });
+      const newPortfolioRes = await db.insert(userPortfolios).values({
+        userId, assetId: asset_id, totalUnits: 0, averageBuyPrice: 0
+      }).returning();
+      portfolio = newPortfolioRes[0];
     }
 
-    const currentUnits = portfolio.total_units || new Prisma.Decimal(0);
-    const currentAvgPrice = portfolio.average_buy_price || new Prisma.Decimal(0);
+    const currentUnits = Number(portfolio.totalUnits || 0);
+    const currentAvgPrice = Number(portfolio.averageBuyPrice || 0);
 
-    if (type === 'JUAL' && parsedUnits.gt(currentUnits)) {
+    if (type === 'JUAL' && parsedUnits > currentUnits) {
       return NextResponse.json(
         { error: 'Unit yang dijual melebihi total unit yang dimiliki!' },
         { status: 400 }
@@ -110,88 +123,77 @@ export async function POST(req: Request) {
 
     const getOrCreateCategory = async (
       name: string,
-      catType: 'PEMASUKAN' | 'PENGELUARAN'
+      catType: any,
+      txCtx?: any
     ) => {
-      let cat = await prisma.categories.findFirst({
-        where: { user_id: userId, name, type: catType },
-      });
-      if (!cat) {
-        cat = await prisma.categories.create({
-          data: { user_id: userId, name, type: catType },
-        });
+      const q = (txCtx || db);
+      let cat = await q.select().from(categories).where(and(eq(categories.userId, userId), eq(categories.name, name), eq(categories.type, catType)));
+      if (cat.length === 0) {
+         cat = await q.insert(categories).values({ userId, name, type: catType }).returning();
       }
-      return cat.id;
+      return cat[0].id;
     };
 
-    await prisma.$transaction(async (tx) => {
+    await db.transaction(async (tx) => {
       let linkedFiatTxId: string | null = null;
       let newUnits = currentUnits;
       let newAvgPrice = currentAvgPrice;
 
       if (type === 'BELI') {
-        const totalPreviousCost = currentUnits.mul(currentAvgPrice);
-        const totalNewCost = parsedUnits.mul(parsedPrice);
-        newUnits = currentUnits.add(parsedUnits);
-        if (newUnits.gt(0)) {
-          newAvgPrice = totalPreviousCost.add(totalNewCost).div(newUnits);
+        const totalPreviousCost = currentUnits * currentAvgPrice;
+        const totalNewCost = parsedUnits * parsedPrice;
+        newUnits = currentUnits + parsedUnits;
+        if (newUnits > 0) {
+          newAvgPrice = (totalPreviousCost + totalNewCost) / newUnits;
         }
 
         if (save_to_wallet && wallet_id) {
-          const catId = await getOrCreateCategory('Berinvestasi', 'PENGELUARAN');
-          const fiatTx = await tx.fiat_transactions.create({
-            data: {
-              user_id: userId,
-              wallet_id,
-              category_id: catId,
-              transaction_type: 'PENGELUARAN',
+          const catId = await getOrCreateCategory('Berinvestasi', 'PENGELUARAN', tx);
+          const fiatTxRes = await tx.insert(fiatTransactions).values({
+              userId,
+              walletId: wallet_id,
+              categoryId: catId,
+              transactionType: 'PENGELUARAN',
               amount: totalAmount,
               description: `Beli Aset${notes ? ' - ' + notes : ''}`,
-              transaction_date: txDate,
-            },
-          });
-          linkedFiatTxId = fiatTx.id;
+              transactionDate: txDate,
+          }).returning();
+          linkedFiatTxId = fiatTxRes[0].id;
         }
       } else if (type === 'JUAL') {
-        newUnits = currentUnits.sub(parsedUnits);
+        newUnits = currentUnits - parsedUnits;
 
         if (save_to_wallet && wallet_id) {
-          const catId = await getOrCreateCategory('Realisasi Investasi', 'PEMASUKAN');
-          const fiatTx = await tx.fiat_transactions.create({
-            data: {
-              user_id: userId,
-              wallet_id,
-              category_id: catId,
-              transaction_type: 'PEMASUKAN',
+          const catId = await getOrCreateCategory('Realisasi Investasi', 'PEMASUKAN', tx);
+          const fiatTxRes = await tx.insert(fiatTransactions).values({
+              userId,
+              walletId: wallet_id,
+              categoryId: catId,
+              transactionType: 'PEMASUKAN',
               amount: totalAmount,
               description: `Jual Aset${notes ? ' - ' + notes : ''}`,
-              transaction_date: txDate,
-            },
-          });
-          linkedFiatTxId = fiatTx.id;
+              transactionDate: txDate,
+          }).returning();
+          linkedFiatTxId = fiatTxRes[0].id;
         }
       }
 
-      await tx.user_portfolios.update({
-        where: { id: portfolio!.id },
-        data: {
-          total_units: newUnits,
-          average_buy_price: newAvgPrice,
-          updated_at: new Date(),
-        },
-      });
+      await tx.update(userPortfolios).set({
+          totalUnits: newUnits,
+          averageBuyPrice: newAvgPrice,
+          updatedAt: new Date(),
+      }).where(eq(userPortfolios.id, portfolio!.id));
 
-      await tx.asset_transactions.create({
-        data: {
-          user_id: userId,
-          portfolio_id: portfolio!.id,
-          transaction_type: type,
+      await tx.insert(assetTransactions).values({
+          userId,
+          portfolioId: portfolio!.id,
+          transactionType: type,
           units: parsedUnits,
-          price_per_unit: parsedPrice,
-          total_amount: totalAmount,
+          pricePerUnit: parsedPrice,
+          totalAmount: totalAmount,
           notes,
-          transaction_date: txDate,
-          linked_fiat_transaction_id: linkedFiatTxId,
-        },
+          transactionDate: txDate,
+          linkedFiatTransactionId: linkedFiatTxId,
       });
     });
 
@@ -212,8 +214,8 @@ export async function POST(req: Request) {
 // Usage: DELETE /api/investments?id=<transactionId>
 export async function DELETE(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -227,10 +229,18 @@ export async function DELETE(req: Request) {
       );
     }
 
-    const investTx = await prisma.asset_transactions.findUnique({
-      where: { id, user_id: session.user.id },
-      include: { user_portfolios: true },
-    });
+    const investTxRes = await db.select({
+      id: assetTransactions.id,
+      transactionType: assetTransactions.transactionType,
+      units: assetTransactions.units,
+      linkedFiatTransactionId: assetTransactions.linkedFiatTransactionId,
+      user_portfolios: userPortfolios
+    })
+    .from(assetTransactions)
+    .leftJoin(userPortfolios, eq(assetTransactions.portfolioId, userPortfolios.id))
+    .where(and(eq(assetTransactions.id, id), eq(assetTransactions.userId, user.sub)));
+
+    const investTx = investTxRes[0];
 
     if (!investTx) {
       return NextResponse.json(
@@ -239,33 +249,30 @@ export async function DELETE(req: Request) {
       );
     }
 
-    await prisma.$transaction(async (ptx) => {
+    await db.transaction(async (ptx) => {
       const p = investTx.user_portfolios;
-      const currentUnits = p.total_units || new Prisma.Decimal(0);
+      const currentUnits = Number(p?.totalUnits || 0);
       let newUnits = currentUnits;
 
-      if (investTx.transaction_type === 'BELI') {
-        newUnits = currentUnits.sub(investTx.units);
-        if (newUnits.lt(0)) {
+      const txUnits = Number(investTx.units);
+
+      if (investTx.transactionType === 'BELI') {
+        newUnits = currentUnits - txUnits;
+        if (newUnits < 0) {
           throw new Error(
             'Penghapusan ini akan membuat unit portofolio menjadi minus. Hapus transaksi penjualan terlebih dahulu.'
           );
         }
-      } else if (investTx.transaction_type === 'JUAL') {
-        newUnits = currentUnits.add(investTx.units);
-        if (investTx.linked_fiat_transaction_id) {
-          await ptx.fiat_transactions.delete({
-            where: { id: investTx.linked_fiat_transaction_id },
-          });
+      } else if (investTx.transactionType === 'JUAL') {
+        newUnits = currentUnits + txUnits;
+        if (investTx.linkedFiatTransactionId) {
+          await ptx.delete(fiatTransactions).where(eq(fiatTransactions.id, investTx.linkedFiatTransactionId as string));
         }
       }
 
-      await ptx.user_portfolios.update({
-        where: { id: p.id },
-        data: { total_units: newUnits },
-      });
+      await ptx.update(userPortfolios).set({ totalUnits: newUnits }).where(eq(userPortfolios.id, p!.id));
 
-      await ptx.asset_transactions.delete({ where: { id } });
+      await ptx.delete(assetTransactions).where(eq(assetTransactions.id, id));
     });
 
     return NextResponse.json(

@@ -1,6 +1,8 @@
 // app/(dashboard)/portfolios/page.tsx
-import { auth } from '@/lib/auth';
-import prisma from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/session';
+import { db } from '@/lib/db';
+import { eq, desc, asc } from 'drizzle-orm';
+import { assets, userPortfolios, assetTransactions } from '@woilaa/db-mykanz/schema/schema';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -34,57 +36,73 @@ const formatUnit = (v: string | number | null | undefined, unitName?: string | n
 };
 
 export default async function PortfolioDashboardPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect('/login');
-  const userId = session.user.id;
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+  const userId = user.sub;
 
   // 1. Fetch all assets with their portfolio position
-  const assets = await prisma.assets.findMany({
-    where: { user_id: userId },
-    include: {
-      user_portfolios: { where: { user_id: userId } }
-    },
-    orderBy: { created_at: 'asc' }
-  });
+  const assetsDataRaw = await db.select({
+      assets,
+      user_portfolios: userPortfolios
+    })
+    .from(assets)
+    .leftJoin(userPortfolios, eq(assets.id, userPortfolios.assetId))
+    .where(eq(assets.userId, userId))
+    .orderBy(asc(assets.createdAt));
 
   // 2. Fetch recent investment transactions (last 8)
-  const recentTxs = await prisma.asset_transactions.findMany({
-    where: { user_id: userId },
-    orderBy: { transaction_date: 'desc' },
-    take: 8,
-    include: {
-      user_portfolios: {
-        include: { assets: { select: { name: true, ticker_symbol: true, unit_name: true, asset_type: true } } }
+  const recentTxs = await db.select({
+      id: assetTransactions.id,
+      transaction_type: assetTransactions.transactionType,
+      total_amount: assetTransactions.totalAmount,
+      units: assetTransactions.units,
+      price_per_unit: assetTransactions.pricePerUnit,
+      transaction_date: assetTransactions.transactionDate,
+      notes: assetTransactions.notes,
+      asset: {
+        name: assets.name,
+        ticker_symbol: assets.tickerSymbol,
+        unit_name: assets.unitName,
+        asset_type: assets.assetType
       }
-    }
-  });
+    })
+    .from(assetTransactions)
+    .leftJoin(userPortfolios, eq(assetTransactions.portfolioId, userPortfolios.id))
+    .leftJoin(assets, eq(userPortfolios.assetId, assets.id))
+    .where(eq(assetTransactions.userId, userId))
+    .orderBy(desc(assetTransactions.transactionDate))
+    .limit(8);
 
   // 3. Compute portfolio stats
-  type AssetWithPortfolio = typeof assets[number];
-  const activeAssets = assets.filter((a: AssetWithPortfolio) => {
-    const p = a.user_portfolios?.[0];
-    return p && Number(p.total_units || 0) > 0;
+  const activeAssets = assetsDataRaw.filter((row: any) => {
+    const p = row.user_portfolios;
+    return p && Number(p.totalUnits || 0) > 0;
   });
 
   let totalPortfolioValue = 0;
   const assetValues: { id: string; name: string; ticker: string | null; type: string; value: number; units: number; avgPrice: number; unitName: string | null }[] = [];
 
-  assets.forEach((a: AssetWithPortfolio) => {
-    const p = a.user_portfolios?.[0];
-    const units = Number(p?.total_units || 0);
-    const avgPrice = Number(p?.average_buy_price || 0);
+  assetsDataRaw.forEach((row: any) => {
+    const a = row.assets;
+    const p = row.user_portfolios;
+    const units = Number(p?.totalUnits || 0);
+    const avgPrice = Number(p?.averageBuyPrice || 0);
     const value = units * avgPrice;
     totalPortfolioValue += value;
-    assetValues.push({
-      id: a.id,
-      name: a.name,
-      ticker: a.ticker_symbol,
-      type: a.asset_type,
-      value,
-      units,
-      avgPrice,
-      unitName: a.unit_name ?? null
-    });
+    
+    // Check if not already added 
+    if(!assetValues.find(x => x.id === a.id)) {
+      assetValues.push({
+        id: a.id,
+        name: a.name,
+        ticker: a.tickerSymbol,
+        type: a.assetType,
+        value,
+        units,
+        avgPrice,
+        unitName: a.unitName ?? null
+      });
+    }
   });
 
   // Sort by value desc
@@ -140,7 +158,7 @@ export default async function PortfolioDashboardPage() {
               </div>
               <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl px-4 py-2">
                 <p className="text-indigo-300 text-[10px] font-bold uppercase tracking-wider">Total Aset</p>
-                <p className="text-white font-black text-xl">{assets.length}</p>
+                <p className="text-white font-black text-xl">{assetValues.length}</p>
               </div>
               <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl px-4 py-2">
                 <p className="text-indigo-300 text-[10px] font-bold uppercase tracking-wider">Jenis</p>
@@ -198,7 +216,7 @@ export default async function PortfolioDashboardPage() {
           <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
             {recentTxs.map((tx) => {
               const isBeli = tx.transaction_type === 'BELI';
-              const asset = tx.user_portfolios?.assets;
+              const asset = tx.asset;
               const txAmount = Number(tx.total_amount || 0);
               const txUnits = Number(tx.units || 0);
               const txPrice = Number(tx.price_per_unit || 0);

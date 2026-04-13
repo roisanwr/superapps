@@ -1,196 +1,181 @@
 // app/api/assets/route.ts
-import { NextResponse } from "next/server";
-import {
-  getUserAssets,
-  getGlobalAssets,
-  createCustomAsset,
-  updateCustomAsset,
-  getAssetById,
-} from "@woilaa/db-mykanz";
-import { requireUser } from "@/lib/session";
-import { db } from "@/lib/db";
-import { assets } from "@woilaa/db-mykanz/schema/schema";
-import { eq, and } from "drizzle-orm";
-import type { assetTypeEnum } from "@woilaa/db-mykanz";
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { assets } from '@woilaa/db-mykanz/schema/schema';
+import { eq, and, desc, asc } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/session';
 
-type AssetType = typeof assetTypeEnum.enumValues[number];
-
+// GET: Fetch all assets for the current user
 export async function GET() {
   try {
-    const user = await requireUser();
-    
-    // As in the original implementation, returning just user custom assets? 
-    // Or normally we want to return both global and user assets? 
-    // We will return user specific assets and global assets to keep it simple, but let's just get user assets as the original Prisma query only checked user_id = session.user.id
-    
-    const userSpecificAssets = await getUserAssets(user.sub);
-    const globalSpecificAssets = await getGlobalAssets();
-    
-    // Combining them as a simple fallback if needed by frontend
-    const allAvailableAssets = [...globalSpecificAssets, ...userSpecificAssets];
-
-    return NextResponse.json({ success: true, data: allAvailableAssets }, { status: 200 });
-  } catch (error: unknown) {
-    if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+
+    const assetsList = await db.select()
+      .from(assets)
+      .where(eq(assets.userId, user.sub))
+      .orderBy(asc(assets.name));
+
+    return NextResponse.json({ success: true, data: assetsList }, { status: 200 });
+  } catch (error) {
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
 
+// POST: Create a new asset
 export async function POST(req: Request) {
   try {
-    const user = await requireUser();
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await req.json();
     const {
       name,
       asset_type: type,
       ticker_symbol: rawTicker,
-      unit_name = "unit",
-      currency = "IDR",
+      unit_name = 'unit',
+      currency = 'IDR',
     } = body as {
       name: string;
-      asset_type: AssetType;
+      asset_type: any;
       ticker_symbol?: string;
       unit_name?: string;
       currency?: string;
     };
 
-    const ticker_symbol = rawTicker ? rawTicker.trim().toUpperCase() : undefined;
+    const ticker_symbol = rawTicker ? rawTicker.trim().toUpperCase() : null;
 
-    if (!name || name.trim() === "" || !type) {
+    if (!name || name.trim() === '' || !type) {
       return NextResponse.json(
-        { error: "Nama Aset & Jenis Aset wajib diisi!" },
+        { error: 'Nama Aset & Jenis Aset wajib diisi!' },
         { status: 400 }
       );
     }
 
-    try {
-      const newAsset = await createCustomAsset({
+    if (ticker_symbol) {
+      const existing = await db.select()
+        .from(assets)
+        .where(and(eq(assets.userId, user.sub), eq(assets.assetType, type), eq(assets.tickerSymbol, ticker_symbol)));
+      if (existing.length > 0) {
+        return NextResponse.json(
+          { error: `Ticker ${ticker_symbol} sudah ada untuk aset jenis ${type}!` },
+          { status: 409 }
+        );
+      }
+    }
+
+    const newAssetResult = await db.insert(assets).values({
         userId: user.sub,
         name: name.trim(),
         assetType: type,
         tickerSymbol: ticker_symbol,
         unitName: unit_name,
         currency,
-        priceSource: "MANUAL",
-      });
+    }).returning();
+    const newAsset = newAssetResult[0];
 
-      return NextResponse.json(
-        { success: true, message: "Aset berhasil dibuat!", data: newAsset },
-        { status: 201 }
-      );
-    } catch (e: any) {
-        if (e.code === '23505') { // Postgres Unique Constraint Violation
-           return NextResponse.json(
-             { error: `Ticker ${ticker_symbol} sudah ada untuk aset jenis ${type}!` },
-             { status: 409 }
-           );
-        }
-        throw e;
-    }
-  } catch (error: unknown) {
-    if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    console.error("Gagal membuat aset:", error);
     return NextResponse.json(
-      { error: "Terjadi kesalahan sistem." },
+      { success: true, message: 'Aset berhasil dibuat!', data: newAsset },
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error('Gagal membuat aset:', error);
+    return NextResponse.json(
+      { error: 'Terjadi kesalahan sistem.' },
       { status: 500 }
     );
   }
 }
 
+// PUT: Update an existing asset
 export async function PUT(req: Request) {
   try {
-    const user = await requireUser();
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await req.json();
     const { id, name, ticker_symbol: rawTicker, unit_name } = body;
 
-    if (!id || !name || name.trim() === "") {
+    if (!id || !name || name.trim() === '') {
       return NextResponse.json(
-        { error: "Nama Aset wajib diisi!" },
+        { error: 'Nama Aset wajib diisi!' },
         { status: 400 }
       );
     }
 
-    const ticker_symbol = rawTicker ? rawTicker.trim().toUpperCase() : undefined;
+    const ticker_symbol = rawTicker ? rawTicker.trim().toUpperCase() : null;
 
-    const asset = await getAssetById(id);
+    const assetResult = await db.select().from(assets).where(and(eq(assets.id, id), eq(assets.userId, user.sub)));
+    const asset = assetResult[0];
 
-    if (!asset || asset.userId !== user.sub) {
+    if (!asset) {
       return NextResponse.json(
-        { error: "Aset tidak ditemukan atau bukan milik Anda." },
+        { error: 'Aset tidak ditemukan atau bukan milik Anda.' },
         { status: 404 }
       );
     }
 
-    try {
-       const updatedAsset = await updateCustomAsset(id, {
+    const updatedAssetResult = await db.update(assets).set({
         name: name.trim(),
         tickerSymbol: ticker_symbol,
         unitName: unit_name,
-      });
+        updatedAt: new Date(),
+    }).where(eq(assets.id, id)).returning();
+    const updatedAsset = updatedAssetResult[0];
 
-      return NextResponse.json(
-        { success: true, message: "Aset berhasil diupdate!", data: updatedAsset },
-        { status: 200 }
-      );
-    } catch(e: any) {
-       if (e.code === '23505') {
-           return NextResponse.json({ error: "Ticker sudah terpakai!" }, { status: 409 });
-       }
-       throw e;
-    }
-   
-  } catch (error: unknown) {
-    if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    console.error("Gagal mengubah aset:", error);
     return NextResponse.json(
-      { error: "Terjadi kesalahan saat mengupdate." },
+      { success: true, message: 'Aset berhasil diupdate!', data: updatedAsset },
+      { status: 200 }
+    );
+  } catch (error: any) {
+    console.error('Gagal mengubah aset:', error);
+    if (error.code === 'P2002') {
+      return NextResponse.json({ error: 'Ticker sudah terpakai!' }, { status: 409 });
+    }
+    return NextResponse.json(
+      { error: 'Terjadi kesalahan saat mengupdate.' },
       { status: 500 }
     );
   }
 }
 
+// DELETE: Permanently delete an asset
+// Usage: DELETE /api/assets?id=<id>
 export async function DELETE(req: Request) {
   try {
-    const user = await requireUser();
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
+    const id = searchParams.get('id');
 
     if (!id) {
       return NextResponse.json(
-        { error: "ID Aset wajib dikirim!" },
+        { error: 'ID Aset wajib dikirim!' },
         { status: 400 }
       );
-    }
-    
-    // Check ownership
-    const asset = await getAssetById(id);
-    if (!asset || asset.userId !== user.sub) {
-        return NextResponse.json(
-          { error: "Aset tidak ditemukan atau bukan milik Anda." },
-          { status: 404 }
-        );
     }
 
     await db.delete(assets).where(and(eq(assets.id, id), eq(assets.userId, user.sub)));
 
     return NextResponse.json(
-      { success: true, message: "Aset berhasil dihapus!" },
+      { success: true, message: 'Aset berhasil dihapus!' },
       { status: 200 }
     );
-  } catch (error: unknown) {
-     if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    console.error("Gagal menghapus aset:", error);
+  } catch (error) {
+    console.error('Gagal menghapus aset:', error);
     return NextResponse.json(
       {
-        error: "Gagal menghapus aset. Pastikan aset ini tidak terikat dengan data penting.",
+        error:
+          'Gagal menghapus aset. Pastikan aset ini tidak terikat dengan data penting.',
       },
       { status: 500 }
     );

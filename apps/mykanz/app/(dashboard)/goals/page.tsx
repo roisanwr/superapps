@@ -1,5 +1,7 @@
-import { auth } from '@/lib/auth';
-import prisma from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/session';
+import { db } from '@/lib/db';
+import { eq, isNull, and, desc, asc } from 'drizzle-orm';
+import { goals, assets, wallets, userPortfolios } from '@woilaa/db-mykanz/schema/schema';
 import { redirect } from 'next/navigation';
 import { Target, TrendingUp, Bitcoin, CalendarClock, Trophy } from 'lucide-react';
 import AddGoalModal from '@/components/AddGoalModal';
@@ -7,28 +9,24 @@ import AddFundsModal from '@/components/AddFundsModal';
 import GoalCardActions from '@/components/GoalCardActions';
 
 export default async function GoalsPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
   
-  const userId = session.user.id;
+  const userId = user.sub;
 
   // Fetch needed data
-  const [goalsRaw, assets, wallets, portfolios] = await Promise.all([
-    prisma.goals.findMany({ 
-      where: { user_id: userId },
-      orderBy: { created_at: 'desc' }
-    }),
-    prisma.assets.findMany({ 
-      where: { user_id: userId }, 
-      orderBy: { name: 'asc' } 
-    }),
-    prisma.wallets.findMany({ 
-      where: { user_id: userId, deleted_at: null }, 
-      orderBy: { name: 'asc' } 
-    }),
-    prisma.user_portfolios.findMany({
-      where: { user_id: userId }
-    })
+  const [goalsRaw, assetsData, walletsData, portfolios] = await Promise.all([
+    db.select().from(goals)
+      .where(eq(goals.userId, userId))
+      .orderBy(desc(goals.createdAt)),
+    db.select().from(assets)
+      .where(eq(assets.userId, userId))
+      .orderBy(asc(assets.name)),
+    db.select().from(wallets)
+      .where(and(eq(wallets.userId, userId), isNull(wallets.deletedAt)))
+      .orderBy(asc(wallets.name)),
+    db.select().from(userPortfolios)
+      .where(eq(userPortfolios.userId, userId))
   ]);
 
   const formatIDR = (val: any) => {
@@ -51,35 +49,35 @@ export default async function GoalsPage() {
 
   // Map assets by ID for quick lookup
   const assetsById: Record<string, any> = {};
-  assets.forEach(a => { assetsById[a.id] = a; });
+  assetsData.forEach(a => { assetsById[a.id] = a; });
 
   // Process goals dynamically, especially for Asset goals
   const processedGoals = goalsRaw.map(goal => {
     // Safely convert all Decimal fields to plain JS numbers for serialization    
-    const goalAsset = (goal as any).asset_id ? assetsById[(goal as any).asset_id] : null;
-    const targetAssetUnits = (goal as any).target_asset_units ? Number((goal as any).target_asset_units) : null;
-    const currentAssetUnits = (goal as any).current_asset_units ? Number((goal as any).current_asset_units) : null;
-    const assetId = (goal as any).asset_id ?? null;
+    const goalAsset = (goal as any).assetId ? assetsById[(goal as any).assetId] : null;
+    const targetAssetUnits = (goal as any).targetAssetUnits ? Number((goal as any).targetAssetUnits) : null;
+    const currentAssetUnits = (goal as any).currentAssetUnits ? Number((goal as any).currentAssetUnits) : null;
+    const assetIdRaw = (goal as any).assetId ?? null;
 
     const safeGoal = {
       id: goal.id,
-      user_id: goal.user_id,
+      user_id: goal.userId,
       name: goal.name,
-      target_amount: Number(goal.target_amount),
-      current_amount: goal.current_amount ? Number(goal.current_amount) : 0,
+      target_amount: Number(goal.targetAmount),
+      current_amount: goal.currentAmount ? Number(goal.currentAmount) : 0,
       deadline: goal.deadline,
-      created_at: goal.created_at,
-      updated_at: goal.updated_at,
-      asset_id: assetId,
+      created_at: goal.createdAt,
+      updated_at: goal.updatedAt,
+      asset_id: assetIdRaw,
       target_asset_units: targetAssetUnits,
       current_asset_units: currentAssetUnits,
       assetName: goalAsset?.name ?? null,
-      assetUnitName: goalAsset?.unit_name ?? 'unit',
+      assetUnitName: goalAsset?.unitName ?? 'unit',
     };
 
     if (safeGoal.asset_id) {
-       const port = portfolios.find(p => p.asset_id === safeGoal.asset_id);
-       const currentUnits = Number(port?.total_units || 0);
+       const port = portfolios.find(p => p.assetId === safeGoal.asset_id);
+       const currentUnits = Number(port?.totalUnits || 0);
        const targetUnits = Number(safeGoal.target_asset_units || 1);
        const progress = calculateProgress(currentUnits, targetUnits);
        
@@ -111,7 +109,7 @@ export default async function GoalsPage() {
             </p>
           </div>
         </div>
-        <AddGoalModal assets={assets} />
+        <AddGoalModal assets={assetsData} />
       </div>
 
       {processedGoals.length === 0 ? (
@@ -210,7 +208,7 @@ export default async function GoalsPage() {
 
                 {/* Action Buttons */}
                 {!goal.isAsset && !isCompleted && (
-                   <AddFundsModal goal={goal} wallets={wallets} />
+                   <AddFundsModal goal={goal} wallets={walletsData} />
                 )}
 
                 {goal.isAsset && !isCompleted && (

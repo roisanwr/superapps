@@ -1,7 +1,7 @@
 // app/(dashboard)/wallets/page.tsx
 import { Plus, CreditCard, Banknote, Smartphone, Wallet as WalletIcon } from 'lucide-react';
-import prisma from '@/lib/prisma';
-import { auth } from '@/lib/auth';
+import { getWalletsWithBalance } from '@woilaa/db-mykanz';
+import { getCurrentUser } from '@/lib/session';
 import { redirect } from 'next/navigation';
 import AddWalletModal from '@/components/AddWalletModal';
 import WalletCardActions from '@/components/WalletCardActions';
@@ -27,25 +27,14 @@ const getWalletIcon = (type: string) => {
 // ==========================================
 export default async function WalletsPage() {
   // 1. Autentikasi: Ambil sesi user yang lagi login
-  const session = await auth();
-  if (!session?.user?.id) {
+  const user = await getCurrentUser();
+  if (!user) {
     redirect('/login'); // Lempar ke login kalau belum masuk
   }
 
   // 2. Fetch Data Asli! 
-  // Sparky pakai $queryRaw biar kita bisa Join tabel 'wallets' dengan View 'wallet_balances' buatanmu!
-  const walletsDataRaw = await prisma.$queryRaw<any[]>`
-    SELECT 
-      w.id, 
-      w.name, 
-      w.type, 
-      w.currency, 
-      COALESCE(wb.balance, 0) as balance
-    FROM wallets w
-    LEFT JOIN wallet_balances wb ON w.id = wb.wallet_id
-    WHERE w.user_id = ${session.user.id}::uuid AND w.deleted_at IS NULL
-    ORDER BY w.created_at ASC
-  `;
+  // Menggunakan view wallet_balances melalui Drizzle
+  const walletsDataRaw = await getWalletsWithBalance(user.sub);
   const walletsData = walletsDataRaw.map(w => ({ ...w, balance: Number(w.balance) }));
 
   // 3. Kalkulasi Total

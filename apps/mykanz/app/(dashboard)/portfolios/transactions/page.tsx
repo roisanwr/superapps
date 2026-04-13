@@ -1,40 +1,57 @@
-import { auth } from '@/lib/auth';
-import prisma from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/session';
+import { db } from '@/lib/db';
+import { assets as assetsSchema, wallets as walletsSchema, assetTransactions, userPortfolios } from '@woilaa/db-mykanz/schema/schema';
+import { eq, desc, asc, and, isNull } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 import { ArrowRightLeft } from 'lucide-react';
 import AddInvestmentModal from '@/components/AddInvestmentModal';
 import InvestmentTransactionList from '@/components/InvestmentTransactionList';
 
 export default async function PortfolioTransactionsPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
   
-  const userId = session.user.id;
+  const userId = user.sub;
 
   // Fetch needed data for the modal
-  const [assets, wallets, transactions] = await Promise.all([
-    prisma.assets.findMany({ where: { user_id: userId }, orderBy: { name: 'asc' } }),
-    prisma.wallets.findMany({ where: { user_id: userId, deleted_at: null }, orderBy: { name: 'asc' } }),
-    prisma.asset_transactions.findMany({
-      where: { user_id: userId },
-      orderBy: { transaction_date: 'desc' },
-      include: {
-        user_portfolios: {
-          include: { assets: true }
-        }
-      }
+  const [assets, wallets, transactionsRaw] = await Promise.all([
+    db.select().from(assetsSchema).where(eq(assetsSchema.userId, userId)).orderBy(asc(assetsSchema.name)),
+    db.select().from(walletsSchema).where(and(eq(walletsSchema.userId, userId), isNull(walletsSchema.deletedAt))).orderBy(asc(walletsSchema.name)),
+    db.select({
+      id: assetTransactions.id,
+      portfolioId: assetTransactions.portfolioId,
+      transactionType: assetTransactions.transactionType,
+      walletId: assetTransactions.walletId,
+      units: assetTransactions.units,
+      pricePerUnit: assetTransactions.pricePerUnit,
+      totalAmount: assetTransactions.totalAmount,
+      transactionDate: assetTransactions.transactionDate,
+      notes: assetTransactions.notes,
+      user_portfolios: userPortfolios,
+      assets: assetsSchema
     })
+    .from(assetTransactions)
+    .leftJoin(userPortfolios, eq(assetTransactions.portfolioId, userPortfolios.id))
+    .leftJoin(assetsSchema, eq(userPortfolios.assetId, assetsSchema.id))
+    .where(eq(assetTransactions.userId, userId))
+    .orderBy(desc(assetTransactions.transactionDate))
   ]);
 
-  const serializedTransactions = transactions.map(tx => ({
-    ...tx,
-    units: tx.units.toString(),
-    price_per_unit: tx.price_per_unit.toString(),
-    total_amount: tx.total_amount.toString(),
-    user_portfolios: tx.user_portfolios ? {
-      ...tx.user_portfolios,
-      total_units: tx.user_portfolios.total_units?.toString(),
-      average_buy_price: tx.user_portfolios.average_buy_price?.toString(),
+  const serializedTransactions = transactionsRaw.map(row => ({
+    id: row.id,
+    portfolio_id: row.portfolioId,
+    transaction_type: row.transactionType,
+    wallet_id: row.walletId,
+    units: row.units?.toString() || '0',
+    price_per_unit: row.pricePerUnit?.toString() || '0',
+    total_amount: row.totalAmount?.toString() || '0',
+    transaction_date: row.transactionDate,
+    notes: row.notes,
+    user_portfolios: row.user_portfolios ? {
+      ...row.user_portfolios,
+      total_units: row.user_portfolios.totalUnits?.toString(),
+      average_buy_price: row.user_portfolios.averageBuyPrice?.toString(),
+      assets: row.assets
     } : null
   }));
 

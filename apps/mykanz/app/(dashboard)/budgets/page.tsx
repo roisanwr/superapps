@@ -1,60 +1,60 @@
-import { auth } from '@/lib/auth';
-import prisma from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/session';
+import { db } from '@/lib/db';
+import { categories, fiatTransactions } from '@woilaa/db-mykanz/schema/schema';
+import { eq, and, isNull, asc, gte, lte, inArray, sql, sum } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 import { PieChart, ShieldAlert, TrendingDown } from 'lucide-react';
 import AddBudgetModal from '@/components/AddBudgetModal';
 import BudgetCardActions from '@/components/BudgetCardActions';
 
 export default async function BudgetsPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect('/login');
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
   
-  const userId = session.user.id;
+  const userId = user.sub;
 
   // 1. Fetch categories for the modal
-  const categories = await prisma.categories.findMany({ 
-    where: { user_id: userId, deleted_at: null },
-    orderBy: { name: 'asc' } 
-  });
+  const categoriesList = await db.select()
+    .from(categories)
+    .where(and(eq(categories.userId, userId), isNull(categories.deletedAt)))
+    .orderBy(asc(categories.name));
 
   // 2. Fetch all budgets including their budget_categories connecting table
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const budgets = await (prisma.budgets as any).findMany({ 
-    where: { user_id: userId },
-    orderBy: { start_date: 'desc' },
-    include: {
-      budget_categories: {
-        include: {
-          categories: true
-        }
-      }
-    }
-  }) as any[];
+  const budgetsRaw = await db.execute(sql\`
+    SELECT b.*, 
+    COALESCE(
+      json_agg(
+        json_build_object('category_id', bc.category_id, 'categories', json_build_object('name', c.name))
+      ) FILTER (WHERE bc.id IS NOT NULL), '[]'
+    ) as budget_categories
+    FROM budgets b
+    LEFT JOIN budget_categories bc ON b.id = bc.budget_id
+    LEFT JOIN categories c ON bc.category_id = c.id
+    WHERE b.user_id = \${userId}::uuid
+    GROUP BY b.id
+    ORDER BY b.start_date DESC
+  \`);
+  const budgetsData = budgetsRaw.rows;
 
   // 3. For each budget, fetch total transactions within its date range for its mapped categories
   const processedBudgets = await Promise.all(
-    budgets.map(async (budget: any) => {
+    budgetsData.map(async (budget: any) => {
       const categoryIds = (budget.budget_categories || []).map((bc: any) => bc.category_id);
       
       let usedAmount = 0;
       
       // Only fetch if there are categories assigned
       if (categoryIds.length > 0) {
-        const txs = await prisma.fiat_transactions.aggregate({
-          where: {
-            user_id: userId,
-            transaction_type: 'PENGELUARAN',
-            category_id: { in: categoryIds },
-            transaction_date: {
-              gte: budget.start_date,
-              lte: budget.end_date
-            }
-          },
-          _sum: {
-            amount: true
-          }
-        });
-        usedAmount = Number(txs._sum.amount || 0);
+        const txs = await db.select({ total: sum(fiatTransactions.amount) })
+          .from(fiatTransactions)
+          .where(and(
+             eq(fiatTransactions.userId, userId),
+             eq(fiatTransactions.transactionType, 'PENGELUARAN'),
+             inArray(fiatTransactions.categoryId, categoryIds),
+             gte(fiatTransactions.transactionDate, new Date(budget.start_date)),
+             lte(fiatTransactions.transactionDate, new Date(budget.end_date))
+          ));
+        usedAmount = Number(txs[0]?.total || 0);
       }
 
       const limit = Number(budget.amount);
@@ -100,7 +100,7 @@ export default async function BudgetsPage() {
             </p>
           </div>
         </div>
-        <AddBudgetModal categories={categories} />
+        <AddBudgetModal categories={categoriesList} />
       </div>
 
       {processedBudgets.length === 0 ? (

@@ -64,7 +64,7 @@ export async function finishWorkout(workoutId: string) {
     const workout = await tx.query.workouts.findFirst({
       where: eq(workouts.id, workoutId),
       with: {
-        exercises: {
+        workoutExercises: {
           with: { 
             sets: true,
             exercise: true 
@@ -83,7 +83,7 @@ export async function finishWorkout(workoutId: string) {
     let totalXp = 0;
     let totalPoints = 0;
 
-    for (const we of workout.exercises) {
+    for (const we of workout.workoutExercises) {
       if (we.sets.length === 0) continue;
 
       // Kumpulkan total volume reps/waktu
@@ -116,7 +116,7 @@ export async function finishWorkout(workoutId: string) {
     }
 
     await tx.update(workouts).set({
-      status: "completed",
+      status: "COMPLETED",
       endedAt: new Date(),
       totalXpEarned: totalXp,
       totalPointsEarned: totalPoints,
@@ -127,7 +127,7 @@ export async function finishWorkout(workoutId: string) {
         userId,
         xpChange: totalXp,
         pointsChange: totalPoints,
-        sourceType: "Training Session",
+        sourceType: "workout",
         description: `Completed Training Session`,
       });
     }
@@ -169,7 +169,7 @@ export async function startWorkoutFromPlan(scheduleExerciseIds: string[]) {
 
   const newWorkoutRecord = await db.insert(workouts).values({
     userId,
-    status: "in_progress",
+    status: "IN_PROGRESS",
   }).returning({ id: workouts.id });
 
   const workoutId = newWorkoutRecord[0].id;
@@ -192,7 +192,7 @@ export async function startEmptyWorkout() {
 
   await db.insert(workouts).values({
     userId: user.sub,
-    status: "in_progress",
+    status: "IN_PROGRESS",
   });
 
   revalidatePath("/training");

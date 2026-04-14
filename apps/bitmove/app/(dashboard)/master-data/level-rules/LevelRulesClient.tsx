@@ -46,7 +46,7 @@ export default function LevelRulesClient({ initialData }: { initialData: any[] }
     e.preventDefault();
     setIsLoading(true);
     try {
-      await saveLevelRule({ ...formData, level: Number(formData.level), minXp: Number(formData.minXp) }, !!editingItem);
+      await saveLevelRule({ level: Number(formData.level), minXp: Number(formData.minXp) }, !!editingItem);
       setIsModalOpen(false);
     } catch (error) {
       alert("Failed to save changes. Make sure ID/Level doesn't conflict.");

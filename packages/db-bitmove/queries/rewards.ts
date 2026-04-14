@@ -119,6 +119,6 @@ export async function deleteReward(
         eq(rewards.userId, userId),
         eq(rewards.isRedeemed, false)
       )
-    );
-  return (result.rowCount ?? 0) > 0;
+    ).returning({ id: rewards.id });
+  return result.length > 0;
 }

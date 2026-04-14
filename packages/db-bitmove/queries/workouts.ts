@@ -77,8 +77,8 @@ export async function archiveExercise(
         eq(exerciseLibrary.id, exerciseId),
         eq(exerciseLibrary.createdBy, userId)
       )
-    );
-  return (result.rowCount ?? 0) > 0;
+    ).returning({ id: exerciseLibrary.id });
+  return result.length > 0;
 }
 
 // -----------------------------------------------------------------------------

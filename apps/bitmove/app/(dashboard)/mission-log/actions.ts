@@ -14,7 +14,7 @@ export async function getWorkoutFromLog(logId: string) {
   });
   if (!log) throw new Error("Log not found");
 
-  if (log.sourceType !== "Training Session" && log.sourceType !== "workout") {
+  if (log.sourceType !== "workout") {
       throw new Error("Not a training session");
   }
 
@@ -25,13 +25,13 @@ export async function getWorkoutFromLog(logId: string) {
   const workout = await db.query.workouts.findFirst({
     where: and(
       eq(workouts.userId, log.userId),
-      eq(workouts.status, "completed"),
+      eq(workouts.status, "COMPLETED"),
       xpEarnedFilter,
       gte(workouts.endedAt, new Date(log.createdAt.getTime() - 60000)),
       lte(workouts.endedAt, new Date(log.createdAt.getTime() + 60000))
     ),
     with: {
-      exercises: {
+      workoutExercises: {
         with: {
           exercise: true,
           sets: {

@@ -15,6 +15,15 @@
     },
     "clean": {
       "cache": false
+    },
+    "db:generate": {
+      "cache": false
+    },
+    "db:migrate": {
+      "cache": false
+    },
+    "db:push": {
+      "cache": false
     }
   }
 }

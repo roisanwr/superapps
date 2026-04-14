@@ -8,10 +8,10 @@ import { revalidatePath } from "next/cache";
 // ==========================================
 // LEVEL RULES
 // ==========================================
-export async function saveLevelRule(data: { level: number; minXp: number; title: string | null }, isEdit: boolean) {
+export async function saveLevelRule(data: { level: number; minXp: number }, isEdit: boolean) {
   if (isEdit) {
     await db.update(levelRules)
-      .set({ minXp: data.minXp, title: data.title })
+      .set({ minXp: data.minXp })
       .where(eq(levelRules.level, data.level));
   } else {
     await db.insert(levelRules).values(data);
@@ -68,14 +68,14 @@ export async function saveDifficultyScale(data: any, originalKey?: { scaleType: 
         .set({ targetValue: data.targetValue })
         .where(
           and(
-            eq(difficultyScales.scaleType, originalKey.scaleType),
+            eq(difficultyScales.scaleType, originalKey.scaleType as any),
             eq(difficultyScales.tier, originalKey.tier as any)
           )
         );
     } else {
       await db.delete(difficultyScales).where(
         and(
-          eq(difficultyScales.scaleType, originalKey.scaleType),
+          eq(difficultyScales.scaleType, originalKey.scaleType as any),
           eq(difficultyScales.tier, originalKey.tier as any)
         )
       );
@@ -90,7 +90,7 @@ export async function saveDifficultyScale(data: any, originalKey?: { scaleType: 
 export async function deleteDifficultyScale(scaleType: string, tier: string) {
   await db.delete(difficultyScales).where(
     and(
-      eq(difficultyScales.scaleType, scaleType),
+      eq(difficultyScales.scaleType, scaleType as any),
       eq(difficultyScales.tier, tier as any)
     )
   );

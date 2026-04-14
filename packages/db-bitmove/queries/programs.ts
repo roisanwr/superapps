@@ -125,8 +125,8 @@ export async function deleteProgram(
         eq(trainingPrograms.id, programId),
         eq(trainingPrograms.userId, userId)
       )
-    );
-  return (result.rowCount ?? 0) > 0;
+    ).returning({ id: trainingPrograms.id });
+  return result.length > 0;
 }
 
 // -----------------------------------------------------------------------------
@@ -188,8 +188,9 @@ export async function deleteScheduleEntry(
 ): Promise<boolean> {
   const result = await db
     .delete(programSchedules)
-    .where(eq(programSchedules.id, scheduleId));
-  return (result.rowCount ?? 0) > 0;
+    .where(eq(programSchedules.id, scheduleId))
+    .returning({ id: programSchedules.id });
+  return result.length > 0;
 }
 
 // Hapus seluruh schedule untuk satu minggu template
@@ -204,6 +205,6 @@ export async function deleteScheduleWeek(
         eq(programSchedules.programId, programId),
         eq(programSchedules.weekNumber, weekNumber)
       )
-    );
-  return (result.rowCount ?? 0) > 0;
+    ).returning({ id: programSchedules.id });
+  return result.length > 0;
 }

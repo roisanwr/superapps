@@ -36,10 +36,10 @@ export default async function TrainingPage() {
   const activeWorkout = await db.query.workouts.findFirst({
     where: and(
       eq(workouts.userId, user.sub),
-      eq(workouts.status, "in_progress")
+      eq(workouts.status, "IN_PROGRESS")
     ),
     with: {
-      exercises: {
+      workoutExercises: {
         with: {
           exercise: true,
           sets: { orderBy: (sets, { asc }) => [asc(sets.setNumber)] },

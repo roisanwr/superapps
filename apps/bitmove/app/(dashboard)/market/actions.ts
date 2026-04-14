@@ -48,7 +48,7 @@ export async function redeemReward(rewardId: string, price: number) {
       userId,
       xpChange: 0,
       pointsChange: -Math.abs(price),
-      sourceType: "Reward Redemption",
+      sourceType: "punishment",
       description: `Redeemed reward ${rewardId}`
     });
 

@@ -161,6 +161,7 @@ export async function undoTask(taskId: string): Promise<Task | null> {
 export async function deleteTask(taskId: string, userId: string): Promise<boolean> {
   const result = await db
     .delete(tasks)
-    .where(and(eq(tasks.id, taskId), eq(tasks.userId, userId)));
-  return (result.rowCount ?? 0) > 0;
+    .where(and(eq(tasks.id, taskId), eq(tasks.userId, userId)))
+    .returning({ id: tasks.id });
+  return result.length > 0;
 }

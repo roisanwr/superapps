@@ -1,5 +1,8 @@
-import { auth } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { requireUser } from "@/lib/session";
+import { db } from "@/lib/db";
+import { tasks, taskLibrary } from "@woilaa/db-bitmove";
+import { eq } from "drizzle-orm";
+import { redirect } from "next/navigation";
 import { QuestList } from "./QuestList";
 import { CreateQuestForm } from "./CreateQuestForm";
 
@@ -8,23 +11,23 @@ export const metadata = {
 };
 
 export default async function QuestsPage() {
-  const session = await auth();
+  const user = await requireUser().catch(() => null);
   
-  if (!session?.user?.id) {
-    return <div>Unauthorized Access.</div>;
+  if (!user?.sub) {
+    return redirect("/login");
   }
 
   // Fetch alive tasks for the user
-  const tasks = await prisma.tasks.findMany({
-    where: { user_id: session.user.id },
-    orderBy: [
-      { is_completed: "asc" },
-      { created_at: "desc" }
+  const userTasks = await db.query.tasks.findMany({
+    where: eq(tasks.userId, user.sub),
+    orderBy: (t, { asc, desc }) => [
+      asc(t.isCompleted),
+      desc(t.createdAt) // Using createdAt instead of created_at
     ]
   });
 
-  const taskLibrary = await prisma.task_library.findMany({
-    orderBy: { category: "asc" }
+  const library = await db.query.taskLibrary.findMany({
+    orderBy: (tl, { asc }) => [asc(tl.category)]
   });
 
   return (
@@ -38,8 +41,8 @@ export default async function QuestsPage() {
         </p>
       </div>
 
-      <QuestList initialTasks={tasks} />
-      <CreateQuestForm library={taskLibrary} />
+      <QuestList initialTasks={userTasks as any} />
+      <CreateQuestForm library={library} />
     </div>
   );
 }

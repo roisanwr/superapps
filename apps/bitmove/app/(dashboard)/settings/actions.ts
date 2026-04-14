@@ -1,12 +1,15 @@
 "use server"
 
-import { auth, signOut } from "@/lib/auth"
-import prisma from "@/lib/prisma"
+import { requireUser, deleteSession } from "@/lib/session"
+import { db } from "@/lib/db"
+import { profiles } from "@woilaa/db-bitmove"
+import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { redirect } from "next/navigation"
 
 export async function updateProfile(formData: FormData) {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Unauthorized");
+  const user = await requireUser();
+  if (!user?.sub) throw new Error("Unauthorized");
 
   const fullName = formData.get("fullName") as string;
   const username = formData.get("username") as string;
@@ -15,21 +18,19 @@ export async function updateProfile(formData: FormData) {
   if (!username) return { error: "Codename is required." };
 
   try {
-    await prisma.profiles.update({
-      where: { id: session.user.id },
-      data: {
-        full_name: fullName,
-        username,
-        timezone,
-        updated_at: new Date()
-      }
-    });
+    await db.update(profiles).set({
+      fullName,
+      username,
+      timezone,
+      updatedAt: new Date()
+    }).where(eq(profiles.id, user.sub));
 
     revalidatePath("/settings");
     revalidatePath("/");
     return { success: true };
   } catch (error: any) {
-    if (error.code === 'P2002') {
+    // Basic unique constraint check can be refined based on driver
+    if (error?.message?.includes("unique") || error?.code === 'P2002' || error?.code === '23505') {
       return { error: "That Codename is already taken by another operative." };
     }
     return { error: "Failed to update profile." };
@@ -37,5 +38,6 @@ export async function updateProfile(formData: FormData) {
 }
 
 export async function logOutAction() {
-  await signOut({ redirectTo: "/login" });
+  deleteSession();
+  redirect("/login");
 }

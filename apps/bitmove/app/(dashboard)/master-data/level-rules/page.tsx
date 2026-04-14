@@ -1,6 +1,8 @@
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/session";
 import { redirect } from "next/navigation";
-import prisma from "@/lib/prisma";
+import { db } from "@/lib/db";
+import { levelRules } from "@woilaa/db-bitmove";
+import { asc } from "drizzle-orm";
 import LevelRulesClient from "./LevelRulesClient";
 
 export const metadata = {
@@ -8,15 +10,15 @@ export const metadata = {
 };
 
 export default async function LevelRulesPage() {
-  const session = await auth();
+  const user = await requireUser().catch(() => null);
   
-  if (!session?.user?.id) {
+  if (!user?.sub) {
     redirect("/login");
   }
 
-  const levelRules = await prisma.level_rules.findMany({
-    orderBy: { level: "asc" }
+  const rules = await db.query.levelRules.findMany({
+    orderBy: [asc(levelRules.level)]
   });
 
-  return <LevelRulesClient initialData={levelRules} />;
+  return <LevelRulesClient initialData={rules as any} />;
 }

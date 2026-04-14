@@ -1,9 +1,10 @@
 "use server"
 
-import { auth } from "@/lib/auth"
-import prisma from "@/lib/prisma"
+import { requireUser } from "@/lib/session"
+import { db } from "@/lib/db"
 import { revalidatePath } from "next/cache"
-import { Prisma } from "@prisma/client"
+import { tasks, pointLogs, profiles, taskLibrary } from "@woilaa/db-bitmove"
+import { eq, and, sql } from "drizzle-orm"
 
 export async function toggleTask(
   taskId: string,
@@ -11,64 +12,57 @@ export async function toggleTask(
   priority: string = "Medium",
   polarity: string = "POSITIVE"
 ) {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Unauthorized");
-
-  const userId = session.user.id;
+  const user = await requireUser();
+  const userId = user.sub;
 
   if (isCompleted) {
     // Undo — un-complete task (dev utility)
-    await prisma.tasks.update({
-      where: { id: taskId, user_id: userId },
-      data: { is_completed: false }
-    });
+    await db.update(tasks)
+      .set({ isCompleted: false })
+      .where(and(eq(tasks.id, taskId), eq(tasks.userId, userId)));
   } else if (polarity === "NEGATIVE") {
     // Task negatif: user menekan = melanggar pantangan → PENALTI
     const xpPenalty  = priority === "High" ? -200 : priority === "Medium" ? -100 : -50;
     const ptsPenalty = priority === "High" ? -100 : priority === "Medium" ? -50  : -25;
 
-    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    await db.transaction(async (tx) => {
       // 1. Tandai sudah dilanggar hari ini
-      await tx.tasks.update({
-        where: { id: taskId, user_id: userId },
-        data: {
-          is_completed: true,
-          last_completed_at: new Date(),
-        }
-      });
+      await tx.update(tasks)
+        .set({
+          isCompleted: true,
+          lastCompletedAt: new Date(),
+        })
+        .where(and(eq(tasks.id, taskId), eq(tasks.userId, userId)));
 
       // 2. Catat penalti di point_logs (nilai negatif)
-      await tx.point_logs.create({
-        data: {
-          user_id: userId,
-          xp_change: xpPenalty,
-          points_change: ptsPenalty,
-          source_type: "PENALTY",
-          description: `Violated forbidden task — ID: ${taskId}`,
-        }
+      await tx.insert(pointLogs).values({
+        userId,
+        xpChange: xpPenalty,
+        pointsChange: ptsPenalty,
+        sourceType: "punishment",
+        description: `Violated forbidden task — ID: ${taskId}`,
       });
 
       // 3. Update profil langsung (kurangi XP & Points, minimum 0)
-      await tx.$executeRaw`
+      await tx.execute(sql`
         UPDATE profiles
         SET
           current_xp     = GREATEST(0, current_xp + ${xpPenalty}),
           current_points = GREATEST(0, current_points + ${ptsPenalty}),
           updated_at     = NOW()
-        WHERE id = ${userId}::uuid
-      `;
+        WHERE user_id = ${userId}::uuid
+      `);
     });
   } else {
     // Task positif: tandai selesai → dapat reward XP via DB trigger
-    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.tasks.update({
-        where: { id: taskId, user_id: userId },
-        data: {
-          is_completed: true,
-          last_completed_at: new Date(),
-          current_value: 1
-        }
-      });
+    await db.transaction(async (tx) => {
+      await tx.update(tasks)
+        .set({
+          isCompleted: true,
+          lastCompletedAt: new Date(),
+          currentValue: 1
+        })
+        .where(and(eq(tasks.id, taskId), eq(tasks.userId, userId)));
     });
   }
 
@@ -76,8 +70,8 @@ export async function toggleTask(
 }
 
 export async function createTask(formData: FormData) {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Unauthorized");
+  const user = await requireUser();
+  const userId = user.sub;
 
   const title    = formData.get("title") as string;
   const category = (formData.get("category") as string) || "General";
@@ -87,18 +81,15 @@ export async function createTask(formData: FormData) {
 
   if (!title) return { error: "Title is required" };
 
-  await prisma.tasks.create({
-    data: {
-      user_id: session.user.id,
-      title,
-      category,
-      priority,
-      frequency,
-      polarity,
-      is_custom: true,
-      target_value: 1,
-      current_value: 0
-    }
+  await db.insert(tasks).values({
+    userId,
+    title,
+    category,
+    priority,
+    frequency,
+    polarity,
+    targetValue: 1,
+    currentValue: 0
   });
 
   revalidatePath("/quests");
@@ -106,38 +97,35 @@ export async function createTask(formData: FormData) {
 }
 
 export async function createTaskFromLibrary(libraryId: string) {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Unauthorized");
+  const user = await requireUser();
+  const userId = user.sub;
 
-  const template = await prisma.task_library.findUnique({
-    where: { id: libraryId }
+  const template = await db.query.taskLibrary.findFirst({
+    where: eq(taskLibrary.id, libraryId)
   });
 
   if (!template) return { error: "Template not found" };
 
   // Cek apakah task dengan judul yang sama sudah ada
-  const duplicate = await prisma.tasks.findFirst({
-    where: {
-      user_id: session.user.id,
-      title: template.title,
-    }
+  const duplicate = await db.query.tasks.findFirst({
+    where: and(
+      eq(tasks.userId, userId),
+      eq(tasks.title, template.title)
+    )
   });
 
   if (duplicate) return { error: "Task sudah ada di daftar kamu" };
 
-  await prisma.tasks.create({
-    data: {
-      user_id: session.user.id,
-      title: template.title,
-      category: template.category,
-      priority: template.default_priority ?? "Medium",
-      frequency: template.default_frequency ?? "Daily",
-      target_value: template.default_target_value ?? 1,
-      unit: template.default_unit ?? "Checklist",
-      polarity: template.polarity ?? "POSITIVE",
-      is_custom: false,
-      current_value: 0,
-    }
+  await db.insert(tasks).values({
+    userId,
+    title: template.title,
+    category: template.category,
+    priority: template.defaultPriority ?? "Medium",
+    frequency: template.defaultFrequency ?? "Daily",
+    targetValue: template.defaultTargetValue ?? 1,
+    unit: template.defaultUnit ?? "Checklist",
+    polarity: template.polarity ?? "POSITIVE",
+    currentValue: 0,
   });
 
   revalidatePath("/quests");
@@ -145,15 +133,11 @@ export async function createTaskFromLibrary(libraryId: string) {
 }
 
 export async function deleteTask(taskId: string) {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Unauthorized");
+  const user = await requireUser();
+  const userId = user.sub;
 
-  await prisma.tasks.delete({
-    where: {
-      id: taskId,
-      user_id: session.user.id
-    }
-  });
+  await db.delete(tasks)
+    .where(and(eq(tasks.id, taskId), eq(tasks.userId, userId)));
 
   revalidatePath("/quests");
 }

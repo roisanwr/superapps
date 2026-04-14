@@ -12,22 +12,22 @@ export default function DifficultyScalesClient({ initialData }: { initialData: a
   const [isLoading, setIsLoading] = useState(false);
 
   const [formData, setFormData] = useState({
-    scale_type: "strength",
+    scaleType: "strength",
     tier: "C",
-    target_value: 0,
+    targetValue: 0,
   });
 
   const openAdd = () => {
-    setFormData({ scale_type: "strength", tier: "C", target_value: 0 });
+    setFormData({ scaleType: "strength", tier: "C", targetValue: 0 });
     setEditingItem(null);
     setIsModalOpen(true);
   };
 
   const openEdit = (item: any) => {
     setFormData({
-      scale_type: item.scale_type,
+      scaleType: item.scaleType,
       tier: item.tier,
-      target_value: item.target_value,
+      targetValue: item.targetValue,
     });
     setEditingItem(item);
     setIsModalOpen(true);
@@ -37,7 +37,7 @@ export default function DifficultyScalesClient({ initialData }: { initialData: a
     if (!deleteTarget) return;
     setIsLoading(true);
     try {
-      await deleteDifficultyScale(deleteTarget.scale_type, deleteTarget.tier);
+      await deleteDifficultyScale(deleteTarget.scaleType, deleteTarget.tier);
       setDeleteTarget(null);
     } catch (e) {
       alert("Failed to delete.");
@@ -50,7 +50,7 @@ export default function DifficultyScalesClient({ initialData }: { initialData: a
     e.preventDefault();
     setIsLoading(true);
     try {
-      await saveDifficultyScale(formData, editingItem ? { scale_type: editingItem.scale_type, tier: editingItem.tier } : undefined);
+      await saveDifficultyScale(formData, editingItem ? { scaleType: editingItem.scaleType, tier: editingItem.tier } : undefined);
       setIsModalOpen(false);
     } catch (error) {
       alert("Failed to save changes. Make sure this Scale + Tier combination isn't already used.");
@@ -59,12 +59,12 @@ export default function DifficultyScalesClient({ initialData }: { initialData: a
     }
   };
 
-  // Group by scale_type
+  // Group by scaleType
   const groupedScales = initialData.reduce((acc: any, scale) => {
-    if (!acc[scale.scale_type]) {
-      acc[scale.scale_type] = [];
+    if (!acc[scale.scaleType]) {
+      acc[scale.scaleType] = [];
     }
-    acc[scale.scale_type].push(scale);
+    acc[scale.scaleType].push(scale);
     return acc;
   }, {});
 
@@ -116,7 +116,7 @@ export default function DifficultyScalesClient({ initialData }: { initialData: a
                 </thead>
                 <tbody className="text-sm font-bold divide-y divide-outline-variant/20">
                   {items.map((item: any) => (
-                    <tr key={`${item.scale_type}-${item.tier}`} className="hover:bg-surface-bright transition-colors text-white">
+                    <tr key={`${item.scaleType}-${item.tier}`} className="hover:bg-surface-bright transition-colors text-white">
                       <td className="p-4 text-xs font-black w-24">
                         <span className={`px-2 py-1 rounded-sm ${item.tier === 'SS' ? 'bg-[#ffcc00]/20 text-[#ffcc00]' :
                             item.tier === 'S' ? 'bg-error/20 text-error' :
@@ -128,7 +128,7 @@ export default function DifficultyScalesClient({ initialData }: { initialData: a
                           {item.tier}
                         </span>
                       </td>
-                      <td className="p-4 text-[#ababab]">{item.target_value}</td>
+                      <td className="p-4 text-[#ababab]">{item.targetValue}</td>
                       <td className="p-4 text-right min-w-[120px]">
                         <button onClick={() => openEdit(item)} className="text-[10px] text-on-surface-variant hover:text-white uppercase tracking-widest mr-3 transition-colors">Edit</button>
                         <button onClick={() => setDeleteTarget(item)} className="text-[10px] text-on-surface-variant hover:text-error uppercase tracking-widest transition-colors">Del</button>
@@ -145,14 +145,14 @@ export default function DifficultyScalesClient({ initialData }: { initialData: a
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingItem ? `EDIT: ${editingItem.scale_type.toUpperCase()} / TIER ${editingItem.tier}` : "ADD NEW SCALE / TIER"}
+        title={editingItem ? `EDIT: ${editingItem.scaleType.toUpperCase()} / TIER ${editingItem.tier}` : "ADD NEW SCALE / TIER"}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-headline font-bold uppercase tracking-widest text-on-surface-variant mb-1">Scale Type</label>
             <select
-              value={formData.scale_type}
-              onChange={(e) => setFormData({ ...formData, scale_type: e.target.value })}
+              value={formData.scaleType}
+              onChange={(e) => setFormData({ ...formData, scaleType: e.target.value })}
               className="w-full bg-surface-container-higher border border-outline-variant p-2 text-white font-body focus:border-primary outline-none transition-colors"
             >
               <option value="endurance">Endurance</option>
@@ -184,8 +184,8 @@ export default function DifficultyScalesClient({ initialData }: { initialData: a
               type="number"
               required
               min={0}
-              value={formData.target_value}
-              onChange={(e) => setFormData({ ...formData, target_value: e.target.valueAsNumber })}
+              value={formData.targetValue}
+              onChange={(e) => setFormData({ ...formData, targetValue: e.target.valueAsNumber })}
               className="w-full bg-surface-container-higher border border-outline-variant p-2 text-white font-body focus:border-primary outline-none transition-colors"
             />
           </div>
@@ -212,7 +212,7 @@ export default function DifficultyScalesClient({ initialData }: { initialData: a
       <ConfirmModal
         isOpen={!!deleteTarget}
         title="HAPUS DIFFICULTY SCALE"
-        description={<>Apakah kamu yakin ingin menghapus <span className="text-white font-bold">{deleteTarget?.scale_type} - {deleteTarget?.tier}</span>?</>}
+        description={<>Apakah kamu yakin ingin menghapus <span className="text-white font-bold">{deleteTarget?.scaleType} - {deleteTarget?.tier}</span>?</>}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
         isLoading={isLoading}

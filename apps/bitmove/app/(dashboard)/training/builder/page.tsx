@@ -1,5 +1,7 @@
-import { auth } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { requireUser } from "@/lib/session";
+import { db } from "@/lib/db";
+import { exerciseLibrary } from "@woilaa/db-bitmove";
+import { eq, asc } from "drizzle-orm";
 import { BuilderUI } from "./BuilderUI";
 import { getProgramsForUser, getProgramById } from "@/lib/services/programService";
 import { removeProgramAction, setActiveProgramAction } from "./actions";
@@ -16,18 +18,18 @@ export default async function BuilderPage({
 }: {
   searchParams: Promise<{ edit?: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user?.id) return <div>Unauthorized Access.</div>;
+  const user = await requireUser().catch(() => null);
+  if (!user?.sub) return <div>Unauthorized Access.</div>;
 
   const { edit } = await searchParams;
 
   const [exercises, programs, initialProgram] = await Promise.all([
-    prisma.exercise_library.findMany({
-      where: { is_archived: false },
-      orderBy: { name: "asc" },
+    db.query.exerciseLibrary.findMany({
+      where: eq(exerciseLibrary.isArchived, false),
+      orderBy: [asc(exerciseLibrary.name)],
     }),
-    getProgramsForUser(session.user.id),
-    edit ? getProgramById(edit, session.user.id) : Promise.resolve(null),
+    getProgramsForUser(user.sub),
+    edit ? getProgramById(edit, user.sub) : Promise.resolve(null),
   ]);
 
   return (
@@ -42,7 +44,7 @@ export default async function BuilderPage({
         </Link>
       </div>
 
-      <BuilderUI key={initialProgram?.id ?? 'new'} exercises={exercises} initialProgram={initialProgram} />
+      <BuilderUI key={initialProgram?.id ?? 'new'} exercises={exercises as any} initialProgram={initialProgram as any} />
 
       {/* Existing Programs */}
       {programs.length > 0 && (
@@ -55,22 +57,22 @@ export default async function BuilderPage({
               <div
                 key={p.id}
                 className={`bg-surface-container p-5 flex items-center justify-between gap-4 border-l-4 ${
-                  p.is_active ? "border-secondary" : "border-outline-variant/30"
+                  p.isActive ? "border-secondary" : "border-outline-variant/30"
                 }`}
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-1">
-                    <h3 className="font-headline font-black text-base uppercase text-white truncate">
+                     <h3 className="font-headline font-black text-base uppercase text-white truncate">
                       {p.title}
                     </h3>
-                    {p.is_active && (
+                    {p.isActive && (
                       <span className="shrink-0 text-[9px] font-headline font-black uppercase tracking-widest text-secondary border border-secondary px-2 py-0.5">
                         AKTIF
                       </span>
                     )}
                   </div>
                   <p className="font-headline font-bold text-[10px] uppercase tracking-widest text-on-surface-variant">
-                    {p.total_weeks} MINGGU • {p.program_schedules.length} SLOT LATIHAN
+                    {p.totalWeeks} MINGGU • {p.schedules.length} SLOT LATIHAN
                   </p>
                 </div>
                   <div className="flex items-center gap-2">
@@ -80,7 +82,7 @@ export default async function BuilderPage({
                     >
                       <Pencil className="w-4 h-4" />
                     </Link>
-                    <ProgramActionButtons programId={p.id} programTitle={p.title} isActive={p.is_active ?? false} />
+                    <ProgramActionButtons programId={p.id} programTitle={p.title} isActive={p.isActive ?? false} />
                   </div>
               </div>
             ))}

@@ -1,15 +1,14 @@
 "use server";
 
-import { auth } from "@/lib/auth";
-import { createAndActivateProgram, updateAndActivateProgram, activateProgram, deleteProgram } from "@/lib/services/programService";
-import { tier_enum } from "@prisma/client";
+import { requireUser } from "@/lib/session";
+import { createAndActivateProgram, updateAndActivateProgram, activateProgram, deleteProgram, type TierEnum } from "@/lib/services/programService";
 import { revalidatePath } from "next/cache";
 
 export interface SlotInput {
   exerciseId: string;
   weekNumber: number;
   dayOfWeek: number;
-  targetTier: tier_enum;
+  targetTier: TierEnum;
   notes?: string;
 }
 
@@ -19,20 +18,20 @@ export async function saveAndActivateProgram(
   slots: SlotInput[],
   programId?: string
 ) {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Unauthorized");
+  const user = await requireUser();
+  if (!user?.sub) throw new Error("Unauthorized");
 
   if (!title.trim()) throw new Error("Judul program tidak boleh kosong");
   if (slots.length === 0) throw new Error("Program harus memiliki minimal 1 latihan");
 
   if (programId) {
-    await updateAndActivateProgram(programId, session.user.id, {
+    await updateAndActivateProgram(programId, user.sub, {
       title: title.trim(),
       totalWeeks,
       slots,
     });
   } else {
-    await createAndActivateProgram(session.user.id, {
+    await createAndActivateProgram(user.sub, {
       title: title.trim(),
       totalWeeks,
       slots,
@@ -44,19 +43,19 @@ export async function saveAndActivateProgram(
 }
 
 export async function removeProgramAction(programId: string) {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Unauthorized");
+  const user = await requireUser();
+  if (!user?.sub) throw new Error("Unauthorized");
 
-  await deleteProgram(programId, session.user.id);
+  await deleteProgram(programId, user.sub);
   revalidatePath("/training");
   revalidatePath("/training/builder");
 }
 
 export async function setActiveProgramAction(programId: string) {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Unauthorized");
+  const user = await requireUser();
+  if (!user?.sub) throw new Error("Unauthorized");
 
-  await activateProgram(programId, session.user.id);
+  await activateProgram(programId, user.sub);
   revalidatePath("/training");
   revalidatePath("/training/builder");
 }

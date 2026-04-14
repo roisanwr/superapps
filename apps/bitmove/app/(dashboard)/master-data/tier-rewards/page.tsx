@@ -1,6 +1,8 @@
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/session";
 import { redirect } from "next/navigation";
-import prisma from "@/lib/prisma";
+import { db } from "@/lib/db";
+import { tierRewards } from "@woilaa/db-bitmove";
+import { asc } from "drizzle-orm";
 import TierRewardsClient from "./TierRewardsClient";
 
 export const metadata = {
@@ -8,16 +10,15 @@ export const metadata = {
 };
 
 export default async function TierRewardsPage() {
-  const session = await auth();
+  const user = await requireUser().catch(() => null);
   
-  if (!session?.user?.id) {
+  if (!user?.sub) {
     redirect("/login");
   }
 
-  // Fetch all tier rewards
-  const rewards = await prisma.tier_rewards.findMany({
-    orderBy: { tier: "asc" }
+  const rewards = await db.query.tierRewards.findMany({
+    orderBy: [asc(tierRewards.tier)]
   });
 
-  return <TierRewardsClient initialData={rewards} />;
+  return <TierRewardsClient initialData={rewards as any} />;
 }

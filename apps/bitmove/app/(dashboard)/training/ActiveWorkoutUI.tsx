@@ -5,14 +5,9 @@ import { PlaySquare, CheckCircle, PlusSquare, ArrowRight, X, Plus } from "lucide
 import { ConfirmModal } from "@/components/shared/ConfirmModal";
 import { addExerciseToWorkout, logSet, finishWorkout, createExercise } from "./actions";
 
-import type { workouts, workout_exercises, sets, exercise_library, difficulty_scales } from "@prisma/client";
-
-type WorkoutWithRelations = workouts & {
-  workout_exercises: (workout_exercises & {
-    exercises: exercise_library;
-    sets: sets[];
-  })[];
-};
+// Assume we just use any or partial types since Drizzle types mapping is more complex 
+// if we import it fully on the client without defining a proper type.
+type WorkoutWithRelations = any;
 
 export function ActiveWorkoutUI({ 
   workout, 
@@ -21,8 +16,8 @@ export function ActiveWorkoutUI({
   todaysSchedule
 }: { 
   workout: WorkoutWithRelations, 
-  library: exercise_library[],
-  difficultyScales: difficulty_scales[],
+  library: any[],
+  difficultyScales: any[],
   todaysSchedule: any[]
 }) {
   const [isPending, startTransition] = useTransition();
@@ -42,21 +37,20 @@ export function ActiveWorkoutUI({
     const reps = parseInt(formData.get("reps") as string) || 0;
     
     startTransition(async () => {
-      // Kita tetap lempar 'C' ke action karena schema butuh validasi Not Null, tapi nilainya ini dihiraukan di perombakan baru
       await logSet(exerciseId, weight, reps);
     });
   };
 
-  const getProgress = (scale_type: string, cumulativeValue: number) => {
+  const getProgress = (scaleType: string, cumulativeValue: number) => {
     const scales = difficultyScales
-      .filter((s) => s.scale_type === scale_type)
-      .sort((a, b) => a.target_value - b.target_value);
+      .filter((s) => s.scaleType === scaleType)
+      .sort((a, b) => a.targetValue - b.targetValue);
     
     let currentTier = "None";
     let nextTierObj = scales[0]; 
     
     for(let i=0; i<scales.length; i++) {
-      if(cumulativeValue >= scales[i].target_value) {
+      if(cumulativeValue >= scales[i].targetValue) {
         currentTier = scales[i].tier;
         nextTierObj = scales[i+1];
       } else {
@@ -84,15 +78,16 @@ export function ActiveWorkoutUI({
         
         <div className="font-headline text-3xl font-black text-primary glitch-effect">
           <span className="text-sm font-bold block text-right text-on-surface-variant mb-1">XP POOL</span>
-          {workout.total_xp_earned || 0} XP
+          {workout.totalXpEarned || 0} XP
         </div>
       </div>
 
       <div className="space-y-10">
-        {workout.workout_exercises?.map((we, index: number) => {
-          const missionTarget = todaysSchedule?.find(s => s.exercise_id === we.exercise_id);
-          const cumulativeReps = we.sets.reduce((sum, s) => sum + (s.completed_value || 0), 0);
-          const { currentTier, nextTierObj } = getProgress(we.exercises.scale_type, cumulativeReps);
+        {workout.exercises?.map((we: any, index: number) => {
+          if (!we.exercise) return null;
+          const missionTarget = todaysSchedule?.find(s => s.exerciseId === we.exerciseId);
+          const cumulativeReps = we.sets.reduce((sum: number, s: any) => sum + (s.completedValue || 0), 0);
+          const { currentTier, nextTierObj } = getProgress(we.exercise.scaleType, cumulativeReps);
           
           return (
             <div key={we.id} className="bg-surface-container-low border border-outline-variant/20 p-6 relative group overflow-hidden">
@@ -100,9 +95,9 @@ export function ActiveWorkoutUI({
               
               <div className="flex justify-between items-start mb-6">
                 <div>
-                  <h3 className="font-headline font-black uppercase text-xl text-primary">{we.exercises.name}</h3>
+                  <h3 className="font-headline font-black uppercase text-xl text-primary">{we.exercise.name}</h3>
                   <span className="font-headline font-bold text-[10px] uppercase tracking-widest text-on-surface-variant">
-                    TARGET: {we.exercises.target_muscle}
+                    TARGET: {we.exercise.targetMuscle}
                   </span>
                 </div>
                 <span className="font-headline font-black text-4xl text-surface-container-highest select-none">
@@ -121,7 +116,7 @@ export function ActiveWorkoutUI({
                   </div>
                   <div className="text-right">
                     <div className="font-headline font-bold text-[10px] text-primary uppercase tracking-widest mb-1">
-                      TOTAL {we.exercises.measurement_unit?.toUpperCase() || "REPS"}
+                      TOTAL {we.exercise.measurementUnit?.toUpperCase() || "REPS"}
                     </div>
                     <div className="font-headline font-black text-xl text-primary">{cumulativeReps}</div>
                   </div>
@@ -130,11 +125,11 @@ export function ActiveWorkoutUI({
                 {nextTierObj && (
                   <div>
                     <div className="w-full bg-surface-container h-2 mt-3 overflow-hidden">
-                      <div className="bg-primary h-full transition-all duration-500" style={{ width: `${Math.min(100, (cumulativeReps / nextTierObj.target_value) * 100)}%` }}></div>
+                      <div className="bg-primary h-full transition-all duration-500" style={{ width: `${Math.min(100, (cumulativeReps / nextTierObj.targetValue) * 100)}%` }}></div>
                     </div>
                     <div className="flex justify-between items-center mt-2">
                        <span className="font-headline font-bold text-[9px] text-on-surface-variant tracking-widest uppercase">TARGET TIER {nextTierObj.tier}</span>
-                       <span className="font-headline font-bold text-[9px] text-on-surface-variant tracking-widest uppercase">{cumulativeReps} / {nextTierObj.target_value}</span>
+                       <span className="font-headline font-bold text-[9px] text-on-surface-variant tracking-widest uppercase">{cumulativeReps} / {nextTierObj.targetValue}</span>
                     </div>
                   </div>
                 )}
@@ -147,7 +142,7 @@ export function ActiveWorkoutUI({
 
                 {missionTarget && (
                   <div className="mt-4 inline-block bg-secondary/10 border border-secondary/30 text-secondary px-3 py-1.5 font-headline font-black text-[10px] uppercase tracking-widest">
-                    QUEST TARGET: TIER {missionTarget.target_tier}
+                    QUEST TARGET: TIER {missionTarget.targetTier}
                   </div>
                 )}
               </div>
@@ -164,11 +159,11 @@ export function ActiveWorkoutUI({
                       </tr>
                     </thead>
                     <tbody className="text-sm">
-                      {we.sets.map((set) => (
+                      {we.sets.map((set: any) => (
                         <tr key={set.id} className="border-b border-outline-variant/10 hover:bg-surface-container-high transition-colors text-white font-bold">
-                          <td className="py-3 px-2 text-on-surface-variant">{set.set_number}</td>
-                          <td className="py-3 px-2">{set.weight_kg}</td>
-                          <td className="py-3 px-2 text-primary">{set.completed_value}</td>
+                          <td className="py-3 px-2 text-on-surface-variant">{set.setNumber}</td>
+                          <td className="py-3 px-2">{set.weightKg}</td>
+                          <td className="py-3 px-2 text-primary">{set.completedValue}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -186,7 +181,7 @@ export function ActiveWorkoutUI({
                   <input type="number" step="0.5" name="weight" className="w-full bg-surface-container-highest border border-outline-variant px-3 py-2 text-white font-headline text-sm focus:border-primary outline-none" placeholder="0" />
                 </div>
                 <div>
-                  <label className="block text-[10px] uppercase font-bold text-on-surface-variant tracking-widest mb-1">{we.exercises.measurement_unit || "Reps"}</label>
+                  <label className="block text-[10px] uppercase font-bold text-on-surface-variant tracking-widest mb-1">{we.exercise.measurementUnit || "Reps"}</label>
                   <input type="number" name="reps" required className="w-full bg-surface-container-highest border border-outline-variant px-3 py-2 text-white font-headline text-sm focus:border-primary outline-none" placeholder="0" />
                 </div>
                 <button 
@@ -259,7 +254,7 @@ export function ActiveWorkoutUI({
                   <div key={ex.id} className="bg-surface-container p-4 flex justify-between items-center hover:bg-surface-bright transition-colors border-l-2 border-transparent hover:border-primary group">
                     <div>
                       <div className="font-headline font-bold text-sm uppercase text-white">{ex.name}</div>
-                      <div className="font-headline font-bold text-[10px] uppercase tracking-widest text-on-surface-variant mt-1">{ex.target_muscle} • {ex.scale_type}</div>
+                      <div className="font-headline font-bold text-[10px] uppercase tracking-widest text-on-surface-variant mt-1">{ex.targetMuscle} • {ex.scaleType}</div>
                     </div>
                     <button 
                       disabled={isPending}

@@ -15,19 +15,19 @@ export default function TaskLibraryClient({ initialData }: { initialData: any[] 
   const [formData, setFormData] = useState({
     title: "",
     category: "",
-    default_priority: "Medium",
-    default_frequency: "Daily",
-    default_target_value: 1,
-    default_unit: "Checklist",
-    icon_emoji: "📋",
+    defaultPriority: "Medium",
+    defaultFrequency: "Daily",
+    defaultTargetValue: 1,
+    defaultUnit: "Checklist",
+    iconEmoji: "📋",
     polarity: "POSITIVE",
   });
 
   const openAdd = () => {
     setFormData({ 
-      title: "", category: "General", default_priority: "Medium", 
-      default_frequency: "Daily", default_target_value: 1, 
-      default_unit: "Checklist", icon_emoji: "📋", polarity: "POSITIVE"
+      title: "", category: "General", defaultPriority: "Medium", 
+      defaultFrequency: "Daily", defaultTargetValue: 1, 
+      defaultUnit: "Checklist", iconEmoji: "📋", polarity: "POSITIVE"
     });
     setEditingItem(null);
     setIsModalOpen(true);
@@ -37,11 +37,11 @@ export default function TaskLibraryClient({ initialData }: { initialData: any[] 
     setFormData({
       title: item.title,
       category: item.category,
-      default_priority: item.default_priority,
-      default_frequency: item.default_frequency,
-      default_target_value: item.default_target_value,
-      default_unit: item.default_unit,
-      icon_emoji: item.icon_emoji || "📋",
+      defaultPriority: item.defaultPriority,
+      defaultFrequency: item.defaultFrequency,
+      defaultTargetValue: item.defaultTargetValue,
+      defaultUnit: item.defaultUnit,
+      iconEmoji: item.iconEmoji || "📋",
       polarity: item.polarity ?? "POSITIVE",
     });
     setEditingItem(item);
@@ -121,7 +121,7 @@ export default function TaskLibraryClient({ initialData }: { initialData: any[] 
               <tbody className="text-sm font-bold divide-y divide-outline-variant/20">
                   {initialData.map((t) => (
                    <tr key={t.id} className="hover:bg-surface-bright transition-colors text-white">
-                     <td className="p-4 text-center text-xl">{t.icon_emoji || "📋"}</td>
+                     <td className="p-4 text-center text-xl">{t.iconEmoji || "📋"}</td>
                      <td className="p-4 uppercase text-primary">{t.title}</td>
                      <td className="p-4 text-[#ababab] uppercase">{t.category}</td>
                      <td className="p-4 text-center">
@@ -137,15 +137,15 @@ export default function TaskLibraryClient({ initialData }: { initialData: any[] 
                      </td>
                      <td className="p-4 text-center">
                        <span className={`px-2 py-0.5 text-[9px] tracking-widest uppercase ${
-                         t.default_priority === 'High' ? 'bg-error/20 text-error' : 
-                         t.default_priority === 'Medium' ? 'bg-secondary/20 text-secondary' : 
+                         t.defaultPriority === 'High' ? 'bg-error/20 text-error' : 
+                         t.defaultPriority === 'Medium' ? 'bg-secondary/20 text-secondary' : 
                          'bg-surface-container-higher text-on-surface'
                        }`}>
-                         {t.default_priority}
+                         {t.defaultPriority}
                        </span>
                      </td>
                      <td className="p-4 text-center text-xs uppercase text-on-surface-variant">
-                       {t.default_frequency}
+                       {t.defaultFrequency}
                      </td>
                      <td className="p-4 text-right min-w-[120px]">
                        <button onClick={() => openEdit(t)} className="text-[10px] text-on-surface-variant hover:text-white uppercase tracking-widest mr-3 transition-colors">Edit</button>
@@ -190,8 +190,8 @@ export default function TaskLibraryClient({ initialData }: { initialData: any[] 
               <input 
                 type="text" required
                 maxLength={2}
-                value={formData.icon_emoji}
-                onChange={(e) => setFormData({...formData, icon_emoji: e.target.value})}
+                value={formData.iconEmoji}
+                onChange={(e) => setFormData({...formData, iconEmoji: e.target.value})}
                 className="w-full bg-surface-container-higher border border-outline-variant p-2 text-white font-body focus:border-primary outline-none transition-colors"
                 placeholder="e.g. 🏋️‍♂️"
               />
@@ -226,8 +226,8 @@ export default function TaskLibraryClient({ initialData }: { initialData: any[] 
             <div>
               <label className="block text-xs font-headline font-bold uppercase tracking-widest text-on-surface-variant mb-1">Priority</label>
               <select 
-                value={formData.default_priority}
-                onChange={(e) => setFormData({...formData, default_priority: e.target.value})}
+                value={formData.defaultPriority}
+                onChange={(e) => setFormData({...formData, defaultPriority: e.target.value})}
                 className="w-full bg-surface-container-higher border border-outline-variant p-2 text-white font-body focus:border-primary outline-none transition-colors"
               >
                 <option value="Low">Low</option>
@@ -238,8 +238,8 @@ export default function TaskLibraryClient({ initialData }: { initialData: any[] 
             <div>
               <label className="block text-xs font-headline font-bold uppercase tracking-widest text-on-surface-variant mb-1">Frequency</label>
               <select 
-                value={formData.default_frequency}
-                onChange={(e) => setFormData({...formData, default_frequency: e.target.value})}
+                value={formData.defaultFrequency}
+                onChange={(e) => setFormData({...formData, defaultFrequency: e.target.value})}
                 className="w-full bg-surface-container-higher border border-outline-variant p-2 text-white font-body focus:border-primary outline-none transition-colors"
               >
                 <option value="Daily">Daily</option>
@@ -251,8 +251,8 @@ export default function TaskLibraryClient({ initialData }: { initialData: any[] 
               <label className="block text-xs font-headline font-bold uppercase tracking-widest text-on-surface-variant mb-1">Default Target</label>
               <input 
                 type="number" required min={1}
-                value={formData.default_target_value}
-                onChange={(e) => setFormData({...formData, default_target_value: e.target.valueAsNumber})}
+                value={formData.defaultTargetValue}
+                onChange={(e) => setFormData({...formData, defaultTargetValue: e.target.valueAsNumber})}
                 className="w-full bg-surface-container-higher border border-outline-variant p-2 text-white font-body focus:border-primary outline-none transition-colors"
               />
             </div>
@@ -260,8 +260,8 @@ export default function TaskLibraryClient({ initialData }: { initialData: any[] 
               <label className="block text-xs font-headline font-bold uppercase tracking-widest text-on-surface-variant mb-1">Unit</label>
               <input 
                 type="text" required
-                value={formData.default_unit}
-                onChange={(e) => setFormData({...formData, default_unit: e.target.value})}
+                value={formData.defaultUnit}
+                onChange={(e) => setFormData({...formData, defaultUnit: e.target.value})}
                 className="w-full bg-surface-container-higher border border-outline-variant p-2 text-white font-body focus:border-primary outline-none transition-colors"
                 placeholder="e.g. Checklist, Reps, Mins"
               />

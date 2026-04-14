@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { getProgramsForUser, createAndActivateProgram } from "@/lib/services/programService";
+import { getProgramsForUser, createAndActivateProgram, type TierEnum } from "@/lib/services/programService";
 import { validateMobileToken } from "@/lib/services/authService";
-import { tier_enum } from "@prisma/client";
 
 export async function GET(req: Request) {
   const userId = await validateMobileToken(req);
@@ -33,7 +32,7 @@ export async function POST(req: Request) {
       exerciseId: s.exerciseId,
       weekNumber: s.weekNumber,
       dayOfWeek: s.dayOfWeek,
-      targetTier: s.targetTier as tier_enum,
+      targetTier: s.targetTier as TierEnum,
       notes: s.notes,
     })),
   });

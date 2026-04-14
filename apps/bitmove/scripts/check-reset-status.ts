@@ -1,23 +1,23 @@
 // Script untuk mengecek status seluruh sistem reset harian
 // Jalankan: npx tsx scripts/check-reset-status.ts
 
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { Client } from "pg";
 import * as dotenv from "dotenv";
 dotenv.config({ path: ".env" });
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL as string });
-const prisma = new PrismaClient({ adapter });
-
 async function main() {
+  const client = new Client({ connectionString: process.env.DATABASE_URL as string });
+  await client.connect();
+
   console.log("🔍 === BITMOVE DAILY RESET DIAGNOSTIC ===\n");
 
   // 1. Cek pg_cron extension
   console.log("1️⃣  Checking pg_cron extension...");
   try {
-    const extensions: any[] = await prisma.$queryRawUnsafe(
+    const res = await client.query(
       `SELECT extname, extversion FROM pg_extension WHERE extname = 'pg_cron'`
     );
+    const extensions = res.rows;
     if (extensions.length > 0) {
       console.log(`   ✅ pg_cron is ENABLED (v${extensions[0].extversion})`);
     } else {
@@ -32,9 +32,10 @@ async function main() {
   // 2. Cek cron jobs
   console.log("\n2️⃣  Checking registered cron jobs...");
   try {
-    const jobs: any[] = await prisma.$queryRawUnsafe(
+    const res = await client.query(
       `SELECT jobid, jobname, schedule, command FROM cron.job`
     );
+    const jobs = res.rows;
     if (jobs.length === 0) {
       console.log("   ❌ No cron jobs registered! Run: npx tsx scripts/deploy-cron.ts");
     } else {
@@ -55,11 +56,12 @@ async function main() {
   // 3. Cek recent cron runs
   console.log("\n3️⃣  Checking recent cron execution history...");
   try {
-    const runs: any[] = await prisma.$queryRawUnsafe(
+    const res = await client.query(
       `SELECT runid, job_id, status, start_time, end_time, return_message 
        FROM cron.job_run_details 
        ORDER BY start_time DESC LIMIT 5`
     );
+    const runs = res.rows;
     if (runs.length === 0) {
       console.log("   ⚠️  No cron execution history found (cron might have never run)");
     } else {
@@ -75,10 +77,11 @@ async function main() {
   // 4. Cek handle_smart_global_reset function exists
   console.log("\n4️⃣  Checking if handle_smart_global_reset() function exists...");
   try {
-    const funcs: any[] = await prisma.$queryRawUnsafe(
+    const res = await client.query(
       `SELECT routine_name FROM information_schema.routines 
        WHERE routine_name = 'handle_smart_global_reset' AND routine_schema = 'public'`
     );
+    const funcs = res.rows;
     if (funcs.length > 0) {
       console.log("   ✅ Function handle_smart_global_reset() EXISTS");
     } else {
@@ -91,13 +94,14 @@ async function main() {
   // 5. Cek profile reset dates
   console.log("\n5️⃣  Checking user profiles reset status...");
   try {
-    const profiles: any[] = await prisma.$queryRawUnsafe(
+    const res = await client.query(
       `SELECT id, username, timezone, last_reset_date, last_weekly_reset, last_active_date,
               (now() AT TIME ZONE coalesce(timezone, 'Asia/Jakarta'))::date as local_today,
               CASE WHEN (now() AT TIME ZONE coalesce(timezone, 'Asia/Jakarta'))::date > last_reset_date 
                    THEN 'NEEDS RESET' ELSE 'UP TO DATE' END as status
        FROM profiles`
     );
+    const profiles = res.rows;
     if (profiles.length === 0) {
       console.log("   ⚠️  No profiles found");
     } else {
@@ -113,7 +117,7 @@ async function main() {
   // 6. Cek daily tasks status
   console.log("\n6️⃣  Checking daily tasks status...");
   try {
-    const taskStats: any[] = await prisma.$queryRawUnsafe(
+    const res = await client.query(
       `SELECT p.username, 
               COUNT(t.id) as total_daily_tasks,
               COUNT(CASE WHEN t.is_completed THEN 1 END) as completed,
@@ -123,6 +127,7 @@ async function main() {
        WHERE t.frequency = 'Daily' 
        GROUP BY p.username`
     );
+    const taskStats = res.rows;
     if (taskStats.length === 0) {
       console.log("   ⚠️  No daily tasks found for any user");
     } else {
@@ -135,11 +140,10 @@ async function main() {
   }
 
   console.log("\n🏁 === DIAGNOSTIC COMPLETE ===");
-  await prisma.$disconnect();
+  await client.end();
 }
 
 main().catch((e) => {
   console.error(e);
-  prisma.$disconnect();
   process.exit(1);
 });

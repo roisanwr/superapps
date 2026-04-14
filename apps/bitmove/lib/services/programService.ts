@@ -1,11 +1,20 @@
-import prisma from "@/lib/prisma";
-import { tier_enum } from "@prisma/client";
+import { db } from "@/lib/db";
+import {
+  trainingPrograms,
+  programSchedules,
+  exerciseLibrary,
+  tierEnum,
+} from "@woilaa/db-bitmove";
+import { eq, and } from "drizzle-orm";
+
+// Gunakan type dari Drizzle schema, bukan @prisma/client
+export type TierEnum = (typeof tierEnum.enumValues)[number];
 
 export interface ScheduleSlot {
   exerciseId: string;
   weekNumber: number;
   dayOfWeek: number;
-  targetTier: tier_enum;
+  targetTier: TierEnum;
   notes?: string;
 }
 
@@ -23,36 +32,37 @@ export async function createAndActivateProgram(
   userId: string,
   input: CreateProgramInput
 ) {
-  return prisma.$transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     // 1. Nonaktifkan semua program aktif user yang lama
-    await tx.training_programs.updateMany({
-      where: { user_id: userId, is_active: true },
-      data: { is_active: false },
-    });
+    await tx
+      .update(trainingPrograms)
+      .set({ isActive: false })
+      .where(and(eq(trainingPrograms.userId, userId), eq(trainingPrograms.isActive, true)));
 
     // 2. Buat program baru
-    const program = await tx.training_programs.create({
-      data: {
-        user_id: userId,
+    const [program] = await tx
+      .insert(trainingPrograms)
+      .values({
+        userId,
         title: input.title,
-        total_weeks: input.totalWeeks,
-        is_active: true,
-        start_date: new Date(),
-      },
-    });
+        totalWeeks: input.totalWeeks,
+        isActive: true,
+        startDate: new Date().toISOString().split("T")[0],
+      })
+      .returning();
 
     // 3. Buat semua slot jadwal
     if (input.slots.length > 0) {
-      await tx.program_schedules.createMany({
-        data: input.slots.map((slot) => ({
-          program_id: program.id,
-          week_number: slot.weekNumber,
-          day_of_week: slot.dayOfWeek,
-          exercise_id: slot.exerciseId,
-          target_tier: slot.targetTier,
+      await tx.insert(programSchedules).values(
+        input.slots.map((slot) => ({
+          programId: program.id,
+          weekNumber: slot.weekNumber,
+          dayOfWeek: slot.dayOfWeek,
+          exerciseId: slot.exerciseId,
+          targetTier: slot.targetTier,
           notes: slot.notes ?? null,
-        })),
-      });
+        }))
+      );
     }
 
     return program;
@@ -64,40 +74,41 @@ export async function updateAndActivateProgram(
   userId: string,
   input: CreateProgramInput
 ) {
-  return prisma.$transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     // 1. Nonaktifkan semua program aktif user yang lama
-    await tx.training_programs.updateMany({
-      where: { user_id: userId, is_active: true },
-      data: { is_active: false },
-    });
+    await tx
+      .update(trainingPrograms)
+      .set({ isActive: false })
+      .where(and(eq(trainingPrograms.userId, userId), eq(trainingPrograms.isActive, true)));
 
     // 2. Update program yang dipilih
-    const program = await tx.training_programs.update({
-      where: { id: programId, user_id: userId },
-      data: {
+    const [program] = await tx
+      .update(trainingPrograms)
+      .set({
         title: input.title,
-        total_weeks: input.totalWeeks,
-        is_active: true,
-      },
-    });
+        totalWeeks: input.totalWeeks,
+        isActive: true,
+      })
+      .where(and(eq(trainingPrograms.id, programId), eq(trainingPrograms.userId, userId)))
+      .returning();
 
     // 3. Hapus schedule lama
-    await tx.program_schedules.deleteMany({
-      where: { program_id: programId },
-    });
+    await tx
+      .delete(programSchedules)
+      .where(eq(programSchedules.programId, programId));
 
     // 4. Buat semua slot jadwal baru
     if (input.slots.length > 0) {
-      await tx.program_schedules.createMany({
-        data: input.slots.map((slot) => ({
-          program_id: program.id,
-          week_number: slot.weekNumber,
-          day_of_week: slot.dayOfWeek,
-          exercise_id: slot.exerciseId,
-          target_tier: slot.targetTier,
+      await tx.insert(programSchedules).values(
+        input.slots.map((slot) => ({
+          programId: program.id,
+          weekNumber: slot.weekNumber,
+          dayOfWeek: slot.dayOfWeek,
+          exerciseId: slot.exerciseId,
+          targetTier: slot.targetTier,
           notes: slot.notes ?? null,
-        })),
-      });
+        }))
+      );
     }
 
     return program;
@@ -105,46 +116,62 @@ export async function updateAndActivateProgram(
 }
 
 export async function activateProgram(programId: string, userId: string) {
-  return prisma.$transaction(async (tx) => {
-    await tx.training_programs.updateMany({
-      where: { user_id: userId, is_active: true },
-      data: { is_active: false },
-    });
+  return db.transaction(async (tx) => {
+    await tx
+      .update(trainingPrograms)
+      .set({ isActive: false })
+      .where(and(eq(trainingPrograms.userId, userId), eq(trainingPrograms.isActive, true)));
 
-    return tx.training_programs.update({
-      where: { id: programId, user_id: userId },
-      data: { is_active: true },
-    });
+    const [program] = await tx
+      .update(trainingPrograms)
+      .set({ isActive: true })
+      .where(and(eq(trainingPrograms.id, programId), eq(trainingPrograms.userId, userId)))
+      .returning();
+
+    return program;
   });
 }
 
-/** Ambil semua program milik user, include jumlah slot per program */
+/** Ambil semua program milik user, include jadwal + info exercise */
 export async function getProgramsForUser(userId: string) {
-  return prisma.training_programs.findMany({
-    where: { user_id: userId },
-    include: {
-      program_schedules: {
-        include: { exercise_library: { select: { name: true, scale_type: true } } },
+  return db.query.trainingPrograms.findMany({
+    where: eq(trainingPrograms.userId, userId),
+    with: {
+      schedules: {
+        with: {
+          exercise: {
+            columns: { name: true, scaleType: true },
+          },
+        },
       },
     },
-    orderBy: { created_at: "desc" },
+    orderBy: (tp, { desc }) => [desc(tp.createdAt)],
   });
 }
 
 /** Hapus satu program beserta semua schedule-nya (cascade di DB) */
 export async function deleteProgram(programId: string, userId: string) {
-  return prisma.training_programs.delete({
-    where: { id: programId, user_id: userId },
-  });
+  const [deleted] = await db
+    .delete(trainingPrograms)
+    .where(and(eq(trainingPrograms.id, programId), eq(trainingPrograms.userId, userId)))
+    .returning();
+  return deleted;
 }
 
-/** Ambil satu program spesifik beserta slidenya */
+/** Ambil satu program spesifik beserta jadwalnya */
 export async function getProgramById(programId: string, userId: string) {
-  return prisma.training_programs.findUnique({
-    where: { id: programId, user_id: userId },
-    include: {
-      program_schedules: {
-        include: { exercise_library: { select: { name: true, scale_type: true } } },
+  return db.query.trainingPrograms.findFirst({
+    where: and(
+      eq(trainingPrograms.id, programId),
+      eq(trainingPrograms.userId, userId)
+    ),
+    with: {
+      schedules: {
+        with: {
+          exercise: {
+            columns: { name: true, scaleType: true },
+          },
+        },
       },
     },
   });

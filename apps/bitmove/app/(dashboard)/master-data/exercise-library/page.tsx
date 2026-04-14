@@ -1,6 +1,8 @@
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/session";
 import { redirect } from "next/navigation";
-import prisma from "@/lib/prisma";
+import { db } from "@/lib/db";
+import { exerciseLibrary } from "@woilaa/db-bitmove";
+import { asc } from "drizzle-orm";
 import ExerciseLibraryClient from "./ExerciseLibraryClient";
 
 export const metadata = {
@@ -8,19 +10,15 @@ export const metadata = {
 };
 
 export default async function ExerciseLibraryPage() {
-  const session = await auth();
+  const user = await requireUser().catch(() => null);
   
-  if (!session?.user?.id) {
+  if (!user?.sub) {
     redirect("/login");
   }
 
-  // Fetch all exercises
-  const exercises = await prisma.exercise_library.findMany({
-    orderBy: [
-      { target_muscle: "asc" },
-      { name: "asc" }
-    ]
+  const exercises = await db.query.exerciseLibrary.findMany({
+    orderBy: [asc(exerciseLibrary.name)]
   });
 
-  return <ExerciseLibraryClient initialData={exercises} userId={session.user.id} />;
+  return <ExerciseLibraryClient initialData={exercises as any} userId={user.sub} />;
 }

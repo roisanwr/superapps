@@ -1,6 +1,8 @@
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/session";
 import { redirect } from "next/navigation";
-import prisma from "@/lib/prisma";
+import { db } from "@/lib/db";
+import { pointLogs } from "@woilaa/db-bitmove";
+import { eq, desc } from "drizzle-orm";
 import MissionLogTable from "@/components/dashboard/MissionLogTable";
 import { AnalyticsDashboard } from "@/components/dashboard/AnalyticsDashboard";
 import { getAnalyticsData } from "./actions";
@@ -10,18 +12,18 @@ export const metadata = {
 };
 
 export default async function MissionLogPage() {
-  const session = await auth();
+  const user = await requireUser().catch(() => null);
 
-  if (!session?.user?.id) {
+  if (!user?.sub) {
     redirect("/login");
   }
 
   // Fetch logs & analytics in parallel
-  const [logs, analyticsData] = await Promise.all([
-    prisma.point_logs.findMany({
-      where: { user_id: session.user.id },
-      orderBy: { created_at: "desc" },
-      take: 100,
+  const [logsList, analyticsData] = await Promise.all([
+    db.query.pointLogs.findMany({
+      where: eq(pointLogs.userId, user.sub),
+      orderBy: [desc(pointLogs.createdAt)],
+      limit: 100,
     }),
     getAnalyticsData("30D"),
   ]);
@@ -42,12 +44,12 @@ export default async function MissionLogPage() {
 
       {/* Log Table */}
       <div className="bg-surface-container border border-outline-variant/30 overflow-hidden">
-        {logs.length === 0 ? (
+        {logsList.length === 0 ? (
           <div className="p-12 text-center text-on-surface-variant font-headline uppercase tracking-widest text-sm border-b-2 border-primary border-dashed">
             NO TRANSACTION RECORDS FOUND.
           </div>
         ) : (
-          <MissionLogTable logs={logs} />
+          <MissionLogTable logs={logsList as any} />
         )}
       </div>
     </div>

@@ -1,19 +1,17 @@
 // Script untuk men-deploy ulang fungsi Cron handle_smart_global_reset ke database
 // jalankan: npx tsx scripts/deploy-cron.ts
 
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { Client } from "pg";
 import * as dotenv from "dotenv";
 dotenv.config({ path: ".env" });
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL as string });
-const prisma = new PrismaClient({ adapter });
-
-
 async function main() {
+  const client = new Client({ connectionString: process.env.DATABASE_URL as string });
+  await client.connect();
+
   console.log("🚀 Deploying updated handle_smart_global_reset...");
 
-  await prisma.$executeRawUnsafe(`
+  await client.query(`
     CREATE OR REPLACE FUNCTION public.handle_smart_global_reset() RETURNS void AS $$
     BEGIN
         -- STEP 1: Kumpulkan user yang butuh di-reset HARI INI berdasarkan zona waktu mereka
@@ -152,7 +150,7 @@ async function main() {
 
   // Deploy cron schedule
   console.log("⏰ Scheduling hourly cron job...");
-  await prisma.$executeRawUnsafe(`
+  await client.query(`
     DO $$
     BEGIN
         BEGIN
@@ -170,14 +168,13 @@ async function main() {
   console.log("✅ Cron schedule registered: runs every hour at :00");
 
   // Verify
-  const jobs = await prisma.$queryRawUnsafe(`SELECT jobid, jobname, schedule FROM cron.job WHERE jobname = 'hourly-smart-global-reset'`);
-  console.log("📋 Registered cron jobs:", jobs);
+  const jobsRes = await client.query(`SELECT jobid, jobname, schedule FROM cron.job WHERE jobname = 'hourly-smart-global-reset'`);
+  console.log("📋 Registered cron jobs:", jobsRes.rows);
 
-  await prisma.$disconnect();
+  await client.end();
 }
 
 main().catch((e) => {
   console.error(e);
-  prisma.$disconnect();
   process.exit(1);
 });

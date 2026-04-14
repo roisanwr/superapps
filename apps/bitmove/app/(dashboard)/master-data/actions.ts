@@ -1,27 +1,26 @@
 "use server";
 
-import prisma from "@/lib/prisma";
+import { db } from "@/lib/db";
+import { levelRules, taskLibrary, exerciseLibrary, difficultyScales, tierRewards } from "@woilaa/db-bitmove";
+import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 // ==========================================
 // LEVEL RULES
 // ==========================================
-export async function saveLevelRule(data: { level: number; min_xp: number; title: string | null }, isEdit: boolean) {
+export async function saveLevelRule(data: { level: number; minXp: number; title: string | null }, isEdit: boolean) {
   if (isEdit) {
-    await prisma.level_rules.update({
-      where: { level: data.level },
-      data: { min_xp: data.min_xp, title: data.title },
-    });
+    await db.update(levelRules)
+      .set({ minXp: data.minXp, title: data.title })
+      .where(eq(levelRules.level, data.level));
   } else {
-    await prisma.level_rules.create({
-      data: { level: data.level, min_xp: data.min_xp, title: data.title },
-    });
+    await db.insert(levelRules).values(data);
   }
   revalidatePath("/master-data/level-rules");
 }
 
 export async function deleteLevelRule(level: number) {
-  await prisma.level_rules.delete({ where: { level } });
+  await db.delete(levelRules).where(eq(levelRules.level, level));
   revalidatePath("/master-data/level-rules");
 }
 
@@ -30,18 +29,15 @@ export async function deleteLevelRule(level: number) {
 // ==========================================
 export async function saveTaskLibrary(data: any, id?: string) {
   if (id) {
-    await prisma.task_library.update({
-      where: { id },
-      data,
-    });
+    await db.update(taskLibrary).set(data).where(eq(taskLibrary.id, id));
   } else {
-    await prisma.task_library.create({ data });
+    await db.insert(taskLibrary).values(data);
   }
   revalidatePath("/master-data/task-library");
 }
 
 export async function deleteTaskLibrary(id: string) {
-  await prisma.task_library.delete({ where: { id } });
+  await db.delete(taskLibrary).where(eq(taskLibrary.id, id));
   revalidatePath("/master-data/task-library");
 }
 
@@ -50,49 +46,54 @@ export async function deleteTaskLibrary(id: string) {
 // ==========================================
 export async function saveExerciseLibrary(data: any, id?: string) {
   if (id) {
-    await prisma.exercise_library.update({
-      where: { id },
-      data,
-    });
+    await db.update(exerciseLibrary).set(data).where(eq(exerciseLibrary.id, id));
   } else {
-    await prisma.exercise_library.create({ data });
+    await db.insert(exerciseLibrary).values(data);
   }
   revalidatePath("/master-data/exercise-library");
 }
 
 export async function deleteExerciseLibrary(id: string) {
-  await prisma.exercise_library.delete({ where: { id } });
+  await db.delete(exerciseLibrary).where(eq(exerciseLibrary.id, id));
   revalidatePath("/master-data/exercise-library");
 }
 
 // ==========================================
 // DIFFICULTY SCALES
 // ==========================================
-export async function saveDifficultyScale(data: any, originalKey?: { scale_type: any; tier: any }) {
+export async function saveDifficultyScale(data: any, originalKey?: { scaleType: string; tier: string }) {
   if (originalKey) {
-    // Prisma doesn't easily let us change part of a composite ID unless we delete/recreate or it's supported by the DB.
-    // Easiest is to update if keys match, else delete & create.
-    if (originalKey.scale_type === data.scale_type && originalKey.tier === data.tier) {
-      await prisma.difficulty_scales.update({
-        where: { scale_type_tier: { scale_type: originalKey.scale_type, tier: originalKey.tier } },
-        data: { target_value: data.target_value },
-      });
+    if (originalKey.scaleType === data.scaleType && originalKey.tier === data.tier) {
+      await db.update(difficultyScales)
+        .set({ targetValue: data.targetValue })
+        .where(
+          and(
+            eq(difficultyScales.scaleType, originalKey.scaleType),
+            eq(difficultyScales.tier, originalKey.tier as any)
+          )
+        );
     } else {
-      await prisma.difficulty_scales.delete({
-        where: { scale_type_tier: { scale_type: originalKey.scale_type, tier: originalKey.tier } }
-      });
-      await prisma.difficulty_scales.create({ data });
+      await db.delete(difficultyScales).where(
+        and(
+          eq(difficultyScales.scaleType, originalKey.scaleType),
+          eq(difficultyScales.tier, originalKey.tier as any)
+        )
+      );
+      await db.insert(difficultyScales).values(data);
     }
   } else {
-    await prisma.difficulty_scales.create({ data });
+    await db.insert(difficultyScales).values(data);
   }
   revalidatePath("/master-data/difficulty-scales");
 }
 
-export async function deleteDifficultyScale(scale_type: any, tier: any) {
-  await prisma.difficulty_scales.delete({
-    where: { scale_type_tier: { scale_type, tier } }
-  });
+export async function deleteDifficultyScale(scaleType: string, tier: string) {
+  await db.delete(difficultyScales).where(
+    and(
+      eq(difficultyScales.scaleType, scaleType),
+      eq(difficultyScales.tier, tier as any)
+    )
+  );
   revalidatePath("/master-data/difficulty-scales");
 }
 
@@ -101,17 +102,16 @@ export async function deleteDifficultyScale(scale_type: any, tier: any) {
 // ==========================================
 export async function saveTierReward(data: any, isEdit: boolean) {
   if (isEdit) {
-    await prisma.tier_rewards.update({
-      where: { tier: data.tier },
-      data: { xp_reward: data.xp_reward, points_reward: data.points_reward },
-    });
+    await db.update(tierRewards)
+      .set({ xpReward: data.xpReward, pointsReward: data.pointsReward })
+      .where(eq(tierRewards.tier, data.tier));
   } else {
-    await prisma.tier_rewards.create({ data });
+    await db.insert(tierRewards).values(data);
   }
   revalidatePath("/master-data/tier-rewards");
 }
 
-export async function deleteTierReward(tier: any) {
-  await prisma.tier_rewards.delete({ where: { tier } });
+export async function deleteTierReward(tier: string) {
+  await db.delete(tierRewards).where(eq(tierRewards.tier, tier as any));
   revalidatePath("/master-data/tier-rewards");
 }

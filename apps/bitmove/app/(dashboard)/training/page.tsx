@@ -1,17 +1,20 @@
-import { auth } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { requireUser } from "@/lib/session";
+import { db } from "@/lib/db";
+import { workouts, exerciseLibrary, difficultyScales as ds } from "@woilaa/db-bitmove";
+import { eq, and, asc } from "drizzle-orm";
 import Link from "next/link";
-import { Play, Activity, Swords, Plus, LayoutGrid } from "lucide-react";
+import { Play, LayoutGrid, Swords, Plus } from "lucide-react";
 import { ActiveWorkoutUI } from "./ActiveWorkoutUI";
 import { getTodayWorkoutPlan } from "@/lib/services/workoutService";
 import { startWorkoutFromPlan, startEmptyWorkout } from "./actions";
-import { tier_enum } from "@prisma/client";
 
 export const metadata = {
   title: "TRAINING GROUND | BITMOVE",
 };
 
-const TIER_COLORS: Record<tier_enum, string> = {
+export type TierEnum = "SS" | "S" | "A" | "B" | "C" | "D";
+
+const TIER_COLORS: Record<string, string> = {
   D: "text-on-surface-variant border-on-surface-variant",
   C: "text-primary border-primary",
   B: "text-secondary border-secondary",
@@ -26,32 +29,32 @@ const DAY_NAMES: Record<number, string> = {
 };
 
 export default async function TrainingPage() {
-  const session = await auth();
-  if (!session?.user?.id) return <div>Unauthorized Access.</div>;
+  const user = await requireUser().catch(() => null);
+  if (!user?.sub) return <div>Unauthorized Access.</div>;
 
   // Cek apakah ada sesi workout yang sedang aktif
-  const activeWorkout = await prisma.workouts.findFirst({
-    where: {
-      user_id: session.user.id,
-      status: "in_progress",
-    },
-    include: {
-      workout_exercises: {
-        include: {
-          exercises: true,
-          sets: { orderBy: { set_number: "asc" } },
+  const activeWorkout = await db.query.workouts.findFirst({
+    where: and(
+      eq(workouts.userId, user.sub),
+      eq(workouts.status, "in_progress")
+    ),
+    with: {
+      exercises: {
+        with: {
+          exercise: true,
+          sets: { orderBy: (sets, { asc }) => [asc(sets.setNumber)] },
         },
       },
     },
   });
 
-  const library = await prisma.exercise_library.findMany({
-    where: { is_archived: false },
-    orderBy: { name: "asc" },
+  const library = await db.query.exerciseLibrary.findMany({
+    where: eq(exerciseLibrary.isArchived, false),
+    orderBy: [asc(exerciseLibrary.name)],
   });
 
-  const difficultyScales = await prisma.difficulty_scales.findMany();
-  const plan = await getTodayWorkoutPlan(session.user.id);
+  const difficultyScalesList = await db.select().from(ds);
+  const plan = await getTodayWorkoutPlan(user.sub);
 
   return (
     <div className="max-w-5xl mx-auto pb-24">
@@ -67,26 +70,22 @@ export default async function TrainingPage() {
       {activeWorkout ? (
         // STATE A: Ada workout in_progress → tampilkan ActiveWorkoutUI
         <ActiveWorkoutUI 
-          workout={activeWorkout} 
+          workout={activeWorkout as any} 
           library={library} 
-          difficultyScales={difficultyScales}
+          difficultyScales={difficultyScalesList}
           todaysSchedule={plan?.todaysSchedule || []}
         />
       ) : (
-        <TodayMissionView plan={plan} library={library} />
+        <TodayMissionView plan={plan} />
       )}
     </div>
   );
 }
 
-import type { exercise_library } from "@prisma/client";
-
 async function TodayMissionView({
   plan,
-  library,
 }: {
   plan: any;
-  library: exercise_library[];
 }) {
   const today = new Date();
   const todayDayNum = today.getDay() === 0 ? 7 : today.getDay();
@@ -199,11 +198,11 @@ async function TodayMissionView({
                   </span>
                   <div>
                     <h3 className="font-headline font-black uppercase text-lg text-white">
-                      {item.exercise_library.name}
+                      {item.exercise.name}
                     </h3>
                     <p className="font-headline font-bold text-[10px] uppercase tracking-widest text-on-surface-variant">
-                      {item.exercise_library.target_muscle} •{" "}
-                      {item.exercise_library.scale_type}
+                      {item.exercise.targetMuscle} •{" "}
+                      {item.exercise.scaleType}
                     </p>
                     {item.notes && (
                       <p className="font-body text-xs text-on-surface-variant/70 mt-1 italic">
@@ -214,10 +213,10 @@ async function TodayMissionView({
                 </div>
                 <div
                   className={`shrink-0 font-headline font-black text-2xl border-b-2 pb-0.5 ${
-                    TIER_COLORS[item.target_tier as tier_enum]
+                    TIER_COLORS[item.targetTier]
                   }`}
                 >
-                  TIER {item.target_tier}
+                  TIER {item.targetTier}
                 </div>
               </div>
             ))}
@@ -228,7 +227,7 @@ async function TodayMissionView({
             <form
               action={async () => {
                 "use server";
-                const exerciseIds = todaysSchedule.map((s: any) => s.exercise_id);
+                const exerciseIds = todaysSchedule.map((s: any) => s.exerciseId);
                 await startWorkoutFromPlan(exerciseIds);
               }}
               className="flex-1"

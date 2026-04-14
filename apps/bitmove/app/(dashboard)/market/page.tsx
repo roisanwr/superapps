@@ -1,5 +1,7 @@
-import { auth } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { requireUser } from "@/lib/session";
+import { db } from "@/lib/db";
+import { profiles, rewards } from "@woilaa/db-bitmove";
+import { eq, desc } from "drizzle-orm";
 import { MarketClient } from "./MarketClient";
 
 export const metadata = {
@@ -7,20 +9,17 @@ export const metadata = {
 };
 
 export default async function MarketPage() {
-  const session = await auth();
-  
-  if (!session?.user?.id) {
-    return <div>Unauthorized Access.</div>;
-  }
+  const user = await requireUser().catch(() => null);
+  if (!user?.sub) return <div>Unauthorized Access.</div>;
 
   // Fetch the user's current points
-  const profile = await prisma.profiles.findUnique({
-    where: { id: session.user.id }
+  const profile = await db.query.profiles.findFirst({
+    where: eq(profiles.id, user.sub)
   });
 
-  const rewards = await prisma.rewards.findMany({
-    where: { user_id: session.user.id },
-    orderBy: { created_at: "desc" }
+  const rewardsList = await db.query.rewards.findMany({
+    where: eq(rewards.userId, user.sub),
+    orderBy: [desc(rewards.createdAt)]
   });
 
   return (
@@ -37,11 +36,11 @@ export default async function MarketPage() {
         
         <div className="bg-surface-container-low border border-outline-variant p-4 text-center min-w-[150px]">
            <span className="block font-headline font-bold text-[10px] text-on-surface-variant uppercase tracking-widest mb-1">AVAILABLE BALANCE</span>
-           <span className="font-headline font-black text-3xl text-primary">{profile?.current_points || 0}</span>
+           <span className="font-headline font-black text-3xl text-primary">{profile?.currentPoints || 0}</span>
         </div>
       </div>
 
-      <MarketClient rewards={rewards} currentPoints={profile?.current_points || 0} />
+      <MarketClient rewards={rewardsList as any} currentPoints={profile?.currentPoints || 0} />
     </div>
   );
 }

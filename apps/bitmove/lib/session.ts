@@ -32,8 +32,8 @@ export async function requireUser(): Promise<AppJWTPayload> {
     throw new Error("UNAUTHORIZED");
   }
 
-  // Pastikan user punya akses ke mykanz
-  if (!user.apps?.includes("mykanz")) {
+  // Pastikan user punya akses ke bitmove
+  if (!user.apps?.includes("bitmove")) {
     throw new Error("FORBIDDEN");
   }
 

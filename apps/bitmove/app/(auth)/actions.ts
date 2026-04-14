@@ -1,60 +1,67 @@
 "use server";
 
-import { signIn } from "@/lib/auth";
-import { AuthError } from "next-auth";
-import prisma from "@/lib/prisma";
-import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 
 export async function loginAction(prevState: any, formData: FormData) {
-  try {
-    await signIn("credentials", {
-      username: formData.get("username"),
-      password: formData.get("password"),
-      redirectTo: "/",
-    });
-  } catch (error) {
-    if (error instanceof AuthError) {
-      switch (error.type) {
-        case "CredentialsSignin":
-          return { error: "Operative not found." };
-        default:
-          return { error: "System malfunction." };
-      }
-    }
-    throw error;
+  const email = formData.get("email") as string;
+  const password = formData.get("password") as string;
+
+  if (!email || !password) {
+    return { error: "Email and Passcode are required." };
   }
+
+  try {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3001"}/api/auth/login`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      }
+    );
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      return { error: data.error ?? "System malfunction." };
+    }
+
+    // Cookie sudah di-set oleh API route via Set-Cookie header.
+    // Redirect ke dashboard.
+  } catch {
+    return { error: "System malfunction. Try again." };
+  }
+
+  redirect("/");
 }
 
 export async function registerAction(prevState: any, formData: FormData) {
+  const email = formData.get("email") as string;
   const username = formData.get("username") as string;
   const password = formData.get("password") as string;
-  const fullName = formData.get("fullName") as string;
+  const name = formData.get("fullName") as string;
 
-  if (!username || !password) {
-    return { error: "Codename and Passcode are required." };
+  if (!email || !username || !password) {
+    return { error: "All fields are required." };
   }
-
-  // Check existing user
-  const existingUser = await prisma.profiles.findUnique({
-    where: { username },
-  });
-
-  if (existingUser) {
-    return { error: "Codename already in use." };
-  }
-
-  const hashedPassword = await bcrypt.hash(password, 10);
 
   try {
-    await prisma.profiles.create({
-      data: {
-        username,
-        password_hash: hashedPassword,
-        full_name: fullName,
-      },
-    });
-  } catch (error) {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3001"}/api/auth/register`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, username, password, name }),
+      }
+    );
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      return { error: data.error ?? "Failed to initialize operative profile." };
+    }
+  } catch {
     return { error: "Failed to initialize operative profile." };
   }
 

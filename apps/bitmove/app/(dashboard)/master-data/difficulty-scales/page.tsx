@@ -1,6 +1,8 @@
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/session";
 import { redirect } from "next/navigation";
-import prisma from "@/lib/prisma";
+import { db } from "@/lib/db";
+import { difficultyScales } from "@woilaa/db-bitmove";
+import { asc } from "drizzle-orm";
 import DifficultyScalesClient from "./DifficultyScalesClient";
 
 export const metadata = {
@@ -8,19 +10,15 @@ export const metadata = {
 };
 
 export default async function DifficultyScalesPage() {
-  const session = await auth();
+  const user = await requireUser().catch(() => null);
   
-  if (!session?.user?.id) {
+  if (!user?.sub) {
     redirect("/login");
   }
 
-  // Fetch all difficulty scales
-  const scales = await prisma.difficulty_scales.findMany({
-    orderBy: [
-      { scale_type: "asc" },
-      { tier: "asc" }
-    ]
+  const scales = await db.query.difficultyScales.findMany({
+    orderBy: [asc(difficultyScales.scaleType), asc(difficultyScales.tier)]
   });
 
-  return <DifficultyScalesClient initialData={scales} />;
+  return <DifficultyScalesClient initialData={scales as any} />;
 }

@@ -1,6 +1,8 @@
-import { auth } from "@/lib/auth";
+import { requireUser } from "@/lib/session";
 import { redirect } from "next/navigation";
-import prisma from "@/lib/prisma";
+import { db } from "@/lib/db";
+import { taskLibrary } from "@woilaa/db-bitmove";
+import { asc } from "drizzle-orm";
 import TaskLibraryClient from "./TaskLibraryClient";
 
 export const metadata = {
@@ -8,19 +10,16 @@ export const metadata = {
 };
 
 export default async function TaskLibraryPage() {
-  const session = await auth();
+  const user = await requireUser().catch(() => null);
   
-  if (!session?.user?.id) {
+  if (!user?.sub) {
     redirect("/login");
   }
 
   // Fetch all tasks ordered by category, then title
-  const tasks = await prisma.task_library.findMany({
-    orderBy: [
-      { category: "asc" },
-      { title: "asc" }
-    ]
+  const tasks = await db.query.taskLibrary.findMany({
+    orderBy: [asc(taskLibrary.category), asc(taskLibrary.title)]
   });
 
-  return <TaskLibraryClient initialData={tasks} />;
+  return <TaskLibraryClient initialData={tasks as any} />;
 }

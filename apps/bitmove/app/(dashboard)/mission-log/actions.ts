@@ -1,37 +1,41 @@
 "use server";
 
-import prisma from "@/lib/prisma";
-import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { requireUser } from "@/lib/session";
+import { pointLogs, workouts } from "@woilaa/db-bitmove";
+import { eq, and, gte, lte, asc } from "drizzle-orm";
 
 export async function getWorkoutFromLog(logId: string) {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Unauthorized");
+  const user = await requireUser();
+  if (!user?.sub) throw new Error("Unauthorized");
 
-  const log = await prisma.point_logs.findUnique({ where: { id: logId } });
+  const log = await db.query.pointLogs.findFirst({
+    where: eq(pointLogs.id, logId)
+  });
   if (!log) throw new Error("Log not found");
 
-  if (log.source_type !== "Training Session" && log.source_type !== "workout") {
+  if (log.sourceType !== "Training Session" && log.sourceType !== "workout") {
       throw new Error("Not a training session");
   }
 
-  if (!log.created_at) throw new Error("Missing creation timestamp");
+  if (!log.createdAt) throw new Error("Missing creation timestamp");
 
-  const workout = await prisma.workouts.findFirst({
-    where: {
-      user_id: log.user_id,
-      status: "completed",
-      total_xp_earned: (log.xp_change ?? 0) > 0 ? (log.xp_change ?? undefined) : undefined,
-      ended_at: {
-        gte: new Date(log.created_at.getTime() - 60000),
-        lte: new Date(log.created_at.getTime() + 60000),
-      }
-    },
-    include: {
-      workout_exercises: {
-        include: {
-          exercises: true,
+  const xpEarnedFilter = (log.xpChange ?? 0) > 0 ? eq(workouts.totalXpEarned, log.xpChange!) : undefined;
+
+  const workout = await db.query.workouts.findFirst({
+    where: and(
+      eq(workouts.userId, log.userId),
+      eq(workouts.status, "completed"),
+      xpEarnedFilter,
+      gte(workouts.endedAt, new Date(log.createdAt.getTime() - 60000)),
+      lte(workouts.endedAt, new Date(log.createdAt.getTime() + 60000))
+    ),
+    with: {
+      exercises: {
+        with: {
+          exercise: true,
           sets: {
-            orderBy: { set_number: 'asc' }
+            orderBy: (sets, { asc }) => [asc(sets.setNumber)]
           }
         }
       }
@@ -97,7 +101,7 @@ function toWIBDateString(date: Date): string {
 function classifySource(sourceType: string | null): "quest" | "training" | "penalty" | "other" {
   if (!sourceType) return "other";
   const s = sourceType.toLowerCase();
-  if (s === "penalty" || s === "resistance_bonus") return "penalty";
+  if (s === "penalty" || s === "resistance_bonus" || s === "punishment") return "penalty";
   if (s.includes("training") || s === "workout") return "training";
   if (s.includes("task") || s.includes("quest") || s.includes("completion") || s === "resistance_bonus") return "quest";
   return "other";
@@ -105,9 +109,9 @@ function classifySource(sourceType: string | null): "quest" | "training" | "pena
 
 // ─── Main analytics server action ────────────────────────────────────────────
 export async function getAnalyticsData(range: TimeRange, dateStr?: string): Promise<AnalyticsData> {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Unauthorized");
-  const userId = session.user.id;
+  const user = await requireUser();
+  if (!user?.sub) throw new Error("Unauthorized");
+  const userId = user.sub;
 
   const now = new Date();
   let since = new Date(now);
@@ -134,18 +138,19 @@ export async function getAnalyticsData(range: TimeRange, dateStr?: string): Prom
   }
 
   // Fetch all point_logs in range
-  const rawLogs = await prisma.point_logs.findMany({
-    where: {
-      user_id: userId,
-      created_at: { gte: since, lte: until },
+  const rawLogs = await db.query.pointLogs.findMany({
+    where: and(
+      eq(pointLogs.userId, userId),
+      gte(pointLogs.createdAt, since),
+      lte(pointLogs.createdAt, until)
+    ),
+    columns: {
+      createdAt: true,
+      xpChange: true,
+      pointsChange: true,
+      sourceType: true,
     },
-    select: {
-      created_at: true,
-      xp_change: true,
-      points_change: true,
-      source_type: true,
-    },
-    orderBy: { created_at: "asc" },
+    orderBy: [asc(pointLogs.createdAt)],
   });
 
   // ── Build bucket map ──────────────────────────────────────────────────────
@@ -213,9 +218,9 @@ export async function getAnalyticsData(range: TimeRange, dateStr?: string): Prom
 
   // Aggregate raw logs into buckets
   for (const log of rawLogs) {
-    if (!log.created_at) continue;
+    if (!log.createdAt) continue;
 
-    const d = new Date(log.created_at);
+    const d = new Date(log.createdAt);
     let isoKey: string;
 
     if (groupBy === "hour") {
@@ -236,8 +241,8 @@ export async function getAnalyticsData(range: TimeRange, dateStr?: string): Prom
     const bucket = bucketMap.get(isoKey);
     if (!bucket) continue;
 
-    const xp = log.xp_change ?? 0;
-    const type = classifySource(log.source_type);
+    const xp = log.xpChange ?? 0;
+    const type = classifySource(log.sourceType);
 
     // Only add positive XP to the flow chart (penalty is shown separately)
     if (xp > 0) bucket.xp += xp;

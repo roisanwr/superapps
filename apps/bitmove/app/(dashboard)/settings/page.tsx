@@ -1,5 +1,7 @@
-import { auth } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { requireUser } from "@/lib/session";
+import { db } from "@/lib/db";
+import { profiles } from "@woilaa/db-bitmove";
+import { eq } from "drizzle-orm";
 import { SettingsClient } from "./SettingsClient";
 
 export const metadata = {
@@ -7,15 +9,15 @@ export const metadata = {
 };
 
 export default async function SettingsPage() {
-  const session = await auth();
+  const user = await requireUser().catch(() => null);
   
-  if (!session?.user?.id) {
+  if (!user?.sub) {
     return <div>Unauthorized Access.</div>;
   }
 
   // Fetch the user's current profile settings
-  const profile = await prisma.profiles.findUnique({
-    where: { id: session.user.id }
+  const profile = await db.query.profiles.findFirst({
+    where: eq(profiles.id, user.sub)
   });
 
   return (

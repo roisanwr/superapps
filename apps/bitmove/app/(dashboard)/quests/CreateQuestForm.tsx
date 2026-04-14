@@ -3,10 +3,10 @@
 import { useTransition, useState } from "react";
 import { createTask, createTaskFromLibrary } from "./actions";
 import { Plus, X, BookOpen, PenSquare, ShieldAlert, Target } from "lucide-react";
-import type { task_library } from "@prisma/client";
+import type { TaskLibrary } from "@woilaa/db-bitmove";
 
 type Props = {
-  library: task_library[];
+  library: TaskLibrary[];
 };
 
 export function CreateQuestForm({ library }: Props) {
@@ -50,8 +50,8 @@ export function CreateQuestForm({ library }: Props) {
   const positiveItems = library.filter(i => (i.polarity ?? "POSITIVE") === "POSITIVE");
   const negativeItems = library.filter(i => i.polarity === "NEGATIVE");
 
-  const groupByCategory = (items: task_library[]) =>
-    items.reduce<Record<string, task_library[]>>((acc, item) => {
+  const groupByCategory = (items: TaskLibrary[]) =>
+    items.reduce<Record<string, TaskLibrary[]>>((acc, item) => {
       if (!acc[item.category]) acc[item.category] = [];
       acc[item.category].push(item);
       return acc;
@@ -133,13 +133,13 @@ export function CreateQuestForm({ library }: Props) {
                               className="w-full flex items-center justify-between p-4 bg-surface-container-high border border-outline-variant/30 hover:border-primary hover:bg-surface-bright transition-all group text-left"
                             >
                               <div className="flex items-center gap-3">
-                                <span className="text-xl">{item.icon_emoji || "📋"}</span>
+                                <span className="text-xl">{item.iconEmoji || "📋"}</span>
                                 <div>
                                   <div className="font-headline font-black text-sm uppercase text-white">
                                     {item.title}
                                   </div>
                                   <div className="font-headline font-bold text-[10px] uppercase tracking-widest text-on-surface-variant mt-0.5">
-                                    {item.default_frequency} • {item.default_priority} Priority
+                                    {item.defaultFrequency} • {item.defaultPriority} Priority
                                   </div>
                                 </div>
                               </div>
@@ -170,13 +170,13 @@ export function CreateQuestForm({ library }: Props) {
                                   className="w-full flex items-center justify-between p-4 bg-error/5 border border-error/20 hover:border-error/60 hover:bg-error/10 transition-all group text-left"
                                 >
                                   <div className="flex items-center gap-3">
-                                    <span className="text-xl">{item.icon_emoji || "🚫"}</span>
+                                    <span className="text-xl">{item.iconEmoji || "🚫"}</span>
                                     <div>
                                       <div className="font-headline font-black text-sm uppercase text-error/90">
                                         {item.title}
                                       </div>
                                       <div className="font-headline font-bold text-[10px] uppercase tracking-widest text-error/50 mt-0.5">
-                                        FORBIDDEN • {item.default_priority} Priority
+                                        FORBIDDEN • {item.defaultPriority} Priority
                                       </div>
                                     </div>
                                   </div>

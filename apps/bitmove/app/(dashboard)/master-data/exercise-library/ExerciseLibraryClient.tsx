@@ -13,17 +13,17 @@ export default function ExerciseLibraryClient({ initialData, userId }: { initial
 
   const [formData, setFormData] = useState({
     name: "",
-    target_muscle: "",
-    scale_type: "strength",
-    measurement_unit: "reps",
-    image_url: "",
-    is_archived: false,
+    targetMuscle: "",
+    scaleType: "strength",
+    measurementUnit: "reps",
+    imageUrl: "",
+    isArchived: false,
   });
 
   const openAdd = () => {
     setFormData({
-      name: "", target_muscle: "", scale_type: "strength",
-      measurement_unit: "reps", image_url: "", is_archived: false
+      name: "", targetMuscle: "", scaleType: "strength",
+      measurementUnit: "reps", imageUrl: "", isArchived: false
     });
     setEditingItem(null);
     setIsModalOpen(true);
@@ -32,11 +32,11 @@ export default function ExerciseLibraryClient({ initialData, userId }: { initial
   const openEdit = (item: any) => {
     setFormData({
       name: item.name,
-      target_muscle: item.target_muscle || "",
-      scale_type: item.scale_type,
-      measurement_unit: item.measurement_unit || "",
-      image_url: item.image_url || "",
-      is_archived: item.is_archived || false,
+      targetMuscle: item.targetMuscle || "",
+      scaleType: item.scaleType,
+      measurementUnit: item.measurementUnit || "",
+      imageUrl: item.imageUrl || "",
+      isArchived: item.isArchived || false,
     });
     setEditingItem(item);
     setIsModalOpen(true);
@@ -59,7 +59,7 @@ export default function ExerciseLibraryClient({ initialData, userId }: { initial
     e.preventDefault();
     setIsLoading(true);
     try {
-      const dataToSave = { ...formData, created_by: userId };
+      const dataToSave = { ...formData, createdBy: userId };
       await saveExerciseLibrary(dataToSave, editingItem?.id);
       setIsModalOpen(false);
     } catch (error) {
@@ -116,9 +116,9 @@ export default function ExerciseLibraryClient({ initialData, userId }: { initial
                 {initialData.map((ex) => (
                   <tr key={ex.id} className="hover:bg-surface-bright transition-colors text-white">
                     <td className="p-4">
-                      {ex.image_url ? (
+                      {ex.imageUrl ? (
                         <div className="w-12 h-12 bg-surface-container-highest border border-outline-variant overflow-hidden">
-                          <img src={ex.image_url} alt={ex.name} className="w-full h-full object-cover grayscale opacity-80" />
+                          <img src={ex.imageUrl} alt={ex.name} className="w-full h-full object-cover grayscale opacity-80" />
                         </div>
                       ) : (
                         <div className="w-12 h-12 bg-surface-container-highest border border-outline-variant flex items-center justify-center text-on-surface-variant/50">
@@ -128,11 +128,11 @@ export default function ExerciseLibraryClient({ initialData, userId }: { initial
                     </td>
                     <td className="p-4 uppercase text-primary">
                       {ex.name}
-                      {ex.is_archived && <span className="ml-2 text-[8px] bg-error/20 text-error px-1 py-0.5 uppercase tracking-tighter">Archived</span>}
+                      {ex.isArchived && <span className="ml-2 text-[8px] bg-error/20 text-error px-1 py-0.5 uppercase tracking-tighter">Archived</span>}
                     </td>
-                    <td className="p-4 text-[#ababab] uppercase">{ex.target_muscle || "-"}</td>
-                    <td className="p-4 text-xs font-mono lowercase text-secondary">{ex.scale_type}</td>
-                    <td className="p-4 text-xs lowercase text-on-surface-variant">{ex.measurement_unit}</td>
+                    <td className="p-4 text-[#ababab] uppercase">{ex.targetMuscle || "-"}</td>
+                    <td className="p-4 text-xs font-mono lowercase text-secondary">{ex.scaleType}</td>
+                    <td className="p-4 text-xs lowercase text-on-surface-variant">{ex.measurementUnit}</td>
                     <td className="p-4 text-right min-w-[120px]">
                       <button onClick={() => openEdit(ex)} className="text-[10px] text-on-surface-variant hover:text-white uppercase tracking-widest mr-3 transition-colors">Edit</button>
                       <button onClick={() => setDeleteTarget(ex)} className="text-[10px] text-on-surface-variant hover:text-error uppercase tracking-widest transition-colors">Del</button>
@@ -167,8 +167,8 @@ export default function ExerciseLibraryClient({ initialData, userId }: { initial
               <label className="block text-xs font-headline font-bold uppercase tracking-widest text-on-surface-variant mb-1">Target Muscle</label>
               <input
                 type="text"
-                value={formData.target_muscle}
-                onChange={(e) => setFormData({ ...formData, target_muscle: e.target.value })}
+                value={formData.targetMuscle}
+                onChange={(e) => setFormData({ ...formData, targetMuscle: e.target.value })}
                 className="w-full bg-surface-container-higher border border-outline-variant p-2 text-white font-body focus:border-primary outline-none transition-colors"
                 placeholder="e.g. Chest, Core"
               />
@@ -176,8 +176,8 @@ export default function ExerciseLibraryClient({ initialData, userId }: { initial
             <div>
               <label className="block text-xs font-headline font-bold uppercase tracking-widest text-on-surface-variant mb-1">Scale Type</label>
               <select
-                value={formData.scale_type}
-                onChange={(e) => setFormData({ ...formData, scale_type: e.target.value })}
+                value={formData.scaleType}
+                onChange={(e) => setFormData({ ...formData, scaleType: e.target.value })}
                 className="w-full bg-surface-container-higher border border-outline-variant p-2 text-white font-body focus:border-primary outline-none transition-colors"
               >
                 <option value="endurance">Endurance</option>
@@ -192,8 +192,8 @@ export default function ExerciseLibraryClient({ initialData, userId }: { initial
               <label className="block text-xs font-headline font-bold uppercase tracking-widest text-on-surface-variant mb-1">Measurement Unit</label>
               <input
                 type="text"
-                value={formData.measurement_unit}
-                onChange={(e) => setFormData({ ...formData, measurement_unit: e.target.value })}
+                value={formData.measurementUnit}
+                onChange={(e) => setFormData({ ...formData, measurementUnit: e.target.value })}
                 className="w-full bg-surface-container-higher border border-outline-variant p-2 text-white font-body focus:border-primary outline-none transition-colors"
                 placeholder="e.g. reps, secs, km"
               />
@@ -202,8 +202,8 @@ export default function ExerciseLibraryClient({ initialData, userId }: { initial
               <label className="block text-xs font-headline font-bold uppercase tracking-widest text-on-surface-variant mb-1">Image URL (Optional)</label>
               <input
                 type="url"
-                value={formData.image_url}
-                onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+                value={formData.imageUrl}
+                onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
                 className="w-full bg-surface-container-higher border border-outline-variant p-2 text-white font-body focus:border-primary outline-none transition-colors"
                 placeholder="https://..."
               />
@@ -212,8 +212,8 @@ export default function ExerciseLibraryClient({ initialData, userId }: { initial
               <input
                 type="checkbox"
                 id="archived"
-                checked={formData.is_archived}
-                onChange={(e) => setFormData({ ...formData, is_archived: e.target.checked })}
+                checked={formData.isArchived}
+                onChange={(e) => setFormData({ ...formData, isArchived: e.target.checked })}
                 className="w-4 h-4 bg-transparent border border-outline-variant checked:bg-primary accent-primary"
               />
               <label htmlFor="archived" className="text-xs font-headline font-bold uppercase tracking-widest text-on-surface-variant select-none">Mark as Archived</label>

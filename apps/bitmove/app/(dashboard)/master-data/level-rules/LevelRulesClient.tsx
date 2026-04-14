@@ -13,18 +13,18 @@ export default function LevelRulesClient({ initialData }: { initialData: any[] }
 
   const [formData, setFormData] = useState({
     level: 1,
-    min_xp: 0,
+    minXp: 0,
     title: "",
   });
 
   const openAdd = () => {
-    setFormData({ level: 1, min_xp: 0, title: "" });
+    setFormData({ level: 1, minXp: 0, title: "" });
     setEditingItem(null);
     setIsModalOpen(true);
   };
 
   const openEdit = (item: any) => {
-    setFormData({ level: item.level, min_xp: item.min_xp, title: item.title || "" });
+    setFormData({ level: item.level, minXp: item.minXp, title: item.title || "" });
     setEditingItem(item);
     setIsModalOpen(true);
   };
@@ -46,7 +46,7 @@ export default function LevelRulesClient({ initialData }: { initialData: any[] }
     e.preventDefault();
     setIsLoading(true);
     try {
-      await saveLevelRule({ ...formData, level: Number(formData.level), min_xp: Number(formData.min_xp) }, !!editingItem);
+      await saveLevelRule({ ...formData, level: Number(formData.level), minXp: Number(formData.minXp) }, !!editingItem);
       setIsModalOpen(false);
     } catch (error) {
       alert("Failed to save changes. Make sure ID/Level doesn't conflict.");
@@ -100,7 +100,7 @@ export default function LevelRulesClient({ initialData }: { initialData: any[] }
                 {initialData.map((rule) => (
                   <tr key={rule.level} className="hover:bg-surface-bright transition-colors text-white">
                     <td className="p-4 text-primary">{rule.level}</td>
-                    <td className="p-4">{rule.min_xp.toLocaleString('id-ID')} XP</td>
+                    <td className="p-4">{rule.minXp.toLocaleString('id-ID')} XP</td>
                     <td className="p-4 text-[#ababab] uppercase">{rule.title || "-"}</td>
                     <td className="p-4 text-right">
                       <button onClick={() => openEdit(rule)} className="text-xs text-on-surface-variant hover:text-white uppercase tracking-widest mr-3">Edit</button>
@@ -138,8 +138,8 @@ export default function LevelRulesClient({ initialData }: { initialData: any[] }
               type="number" 
               required
               min={0}
-              value={formData.min_xp}
-              onChange={(e) => setFormData({...formData, min_xp: e.target.valueAsNumber})}
+              value={formData.minXp}
+              onChange={(e) => setFormData({...formData, minXp: e.target.valueAsNumber})}
               className="w-full bg-surface-container-higher border border-outline-variant p-2 text-white font-body focus:border-primary outline-none transition-colors"
             />
           </div>

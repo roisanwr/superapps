@@ -1,35 +1,36 @@
 import { DashboardShell } from "@/components/layout/DashboardShell";
-import { auth } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/session";
+import { db } from "@/lib/db";
+import { profiles } from "@woilaa/db-bitmove";
+import { eq } from "drizzle-orm";
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
+  const user = await getCurrentUser();
   let streak = 0;
   let xp = 0;
   let points = 0;
   let level = 1;
   let username = "Operative";
 
-  if (session?.user?.id) {
-    const profile = await prisma.profiles.findUnique({
-      where: { id: session.user.id },
-      select: { 
-        streak_current: true, 
-        current_xp: true, 
-        current_points: true,
-        level: true,
-        username: true,
+  if (user?.sub) {
+    const profile = await db.query.profiles.findFirst({
+      where: eq(profiles.userId, user.sub),
+      columns: { 
+        streakDays: true, 
+        currentXp: true, 
+        currentPoints: true,
+        currentLevel: true,
       }
     });
-    streak = profile?.streak_current || 0;
-    xp = profile?.current_xp || 0;
-    points = profile?.current_points || 0;
-    level = profile?.level || 1;
-    username = profile?.username || session.user.name || "Operative";
+    streak = profile?.streakDays || 0;
+    xp = profile?.currentXp || 0;
+    points = profile?.currentPoints || 0;
+    level = profile?.currentLevel || 1;
+    username = user.username || user.name || "Operative";
   }
 
   return (
@@ -38,4 +39,3 @@ export default async function DashboardLayout({
     </DashboardShell>
   );
 }
-

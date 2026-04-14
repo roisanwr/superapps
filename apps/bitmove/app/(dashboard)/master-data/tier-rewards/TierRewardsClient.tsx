@@ -13,12 +13,12 @@ export default function TierRewardsClient({ initialData }: { initialData: any[] 
 
   const [formData, setFormData] = useState({
     tier: "C",
-    xp_reward: 0,
-    points_reward: 0,
+    xpReward: 0,
+    pointsReward: 0,
   });
 
   const openAdd = () => {
-    setFormData({ tier: "C", xp_reward: 0, points_reward: 0 });
+    setFormData({ tier: "C", xpReward: 0, pointsReward: 0 });
     setEditingItem(null);
     setIsModalOpen(true);
   };
@@ -26,8 +26,8 @@ export default function TierRewardsClient({ initialData }: { initialData: any[] 
   const openEdit = (item: any) => {
     setFormData({
       tier: item.tier,
-      xp_reward: item.xp_reward,
-      points_reward: item.points_reward,
+      xpReward: item.xpReward,
+      pointsReward: item.pointsReward,
     });
     setEditingItem(item);
     setIsModalOpen(true);
@@ -115,8 +115,8 @@ export default function TierRewardsClient({ initialData }: { initialData: any[] 
                         {reward.tier}
                       </span>
                     </td>
-                    <td className="p-4 text-primary">+{reward.xp_reward.toLocaleString('id-ID')} XP</td>
-                    <td className="p-4 text-secondary">+{reward.points_reward.toLocaleString('id-ID')} PTS</td>
+                    <td className="p-4 text-primary">+{reward.xpReward.toLocaleString('id-ID')} XP</td>
+                    <td className="p-4 text-secondary">+{reward.pointsReward.toLocaleString('id-ID')} PTS</td>
                     <td className="p-4 text-right min-w-[120px]">
                       <button onClick={() => openEdit(reward)} className="text-[10px] text-on-surface-variant hover:text-white uppercase tracking-widest mr-3 transition-colors">Edit</button>
                       <button onClick={() => setDeleteTarget(reward)} className="text-[10px] text-on-surface-variant hover:text-error uppercase tracking-widest transition-colors">Del</button>
@@ -157,8 +157,8 @@ export default function TierRewardsClient({ initialData }: { initialData: any[] 
               type="number" 
               required
               min={0}
-              value={formData.xp_reward}
-              onChange={(e) => setFormData({...formData, xp_reward: e.target.valueAsNumber})}
+              value={formData.xpReward}
+              onChange={(e) => setFormData({...formData, xpReward: e.target.valueAsNumber})}
               className="w-full bg-surface-container-higher border border-outline-variant p-2 text-white font-body focus:border-primary outline-none transition-colors"
             />
           </div>
@@ -168,8 +168,8 @@ export default function TierRewardsClient({ initialData }: { initialData: any[] 
               type="number" 
               required
               min={0}
-              value={formData.points_reward}
-              onChange={(e) => setFormData({...formData, points_reward: e.target.valueAsNumber})}
+              value={formData.pointsReward}
+              onChange={(e) => setFormData({...formData, pointsReward: e.target.valueAsNumber})}
               className="w-full bg-surface-container-higher border border-outline-variant p-2 text-white font-body focus:border-primary outline-none transition-colors"
             />
           </div>

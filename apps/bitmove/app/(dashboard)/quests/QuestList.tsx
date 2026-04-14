@@ -18,7 +18,7 @@ export function QuestList({ initialTasks }: { initialTasks: any[] }) {
 
   const handleToggle = (taskId: string, currentStatus: boolean, priority: string) => {
     setTasks((prev) =>
-      prev.map((t) => t.id === taskId ? { ...t, is_completed: !currentStatus } : t)
+      prev.map((t) => t.id === taskId ? { ...t, isCompleted: !currentStatus } : t)
     );
     startTransition(async () => {
       await toggleTask(taskId, currentStatus, priority, "POSITIVE");
@@ -34,7 +34,7 @@ export function QuestList({ initialTasks }: { initialTasks: any[] }) {
     if (!violateTarget) return;
     const task = violateTarget;
     setTasks((prev) =>
-      prev.map((t) => t.id === task.id ? { ...t, is_completed: true } : t)
+      prev.map((t) => t.id === task.id ? { ...t, isCompleted: true } : t)
     );
     setViolateTarget(null);
     startTransition(async () => {
@@ -61,7 +61,7 @@ export function QuestList({ initialTasks }: { initialTasks: any[] }) {
 
   const processTasks = (taskList: any[]) =>
     [...taskList].sort((a, b) => {
-      if (a.is_completed !== b.is_completed) return a.is_completed ? 1 : -1;
+      if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1;
       return (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0);
     });
 
@@ -72,7 +72,7 @@ export function QuestList({ initialTasks }: { initialTasks: any[] }) {
 
   // -------------- Positive Task Item --------------
   const TaskItem = ({ task }: { task: any }) => {
-    const isCompleted = task.is_completed;
+    const isCompleted = task.isCompleted;
     const priorityColor =
       task.priority === "High" ? "text-error" :
       task.priority === "Medium" ? "text-secondary" :
@@ -143,7 +143,7 @@ export function QuestList({ initialTasks }: { initialTasks: any[] }) {
 
   // -------------- Forbidden Task Item --------------
   const ForbiddenItem = ({ task }: { task: any }) => {
-    const isViolated = task.is_completed;
+    const isViolated = task.isCompleted;
     const xpPenalty  = task.priority === "High" ? 200 : task.priority === "Medium" ? 100 : 50;
     const ptsPenalty = task.priority === "High" ? 100 : task.priority === "Medium" ? 50  : 25;
 

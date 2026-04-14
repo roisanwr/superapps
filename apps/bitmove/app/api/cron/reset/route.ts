@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { db } from "@/lib/db";
+import { tasks, pointLogs, profiles } from "@woilaa/db-bitmove";
+import { eq, and, sql } from "drizzle-orm";
 
 /**
  * API Fallback untuk trigger reset harian secara manual atau via external cron.
@@ -16,7 +18,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const secret = searchParams.get("secret");
 
-  const expectedSecret = process.env.AUTH_SECRET;
+  const expectedSecret = process.env.JWT_SECRET; // Switched to JWT_SECRET
   if (!secret || secret !== expectedSecret) {
     return NextResponse.json(
       { error: "Unauthorized. Provide ?secret=YOUR_SECRET" },
@@ -27,61 +29,64 @@ export async function GET(request: Request) {
   try {
     // ─── Step 1: Beri bonus passive XP untuk Forbidden tasks yang berhasil ditahan ───
     // Cari semua task NEGATIVE yang tidak dicentang hari ini (is_completed = false)
-    const allResisted = await prisma.tasks.findMany({
-      where: {
-        polarity: "NEGATIVE",
-        is_completed: false,
-      },
-      select: {
-        id: true,
-        user_id: true,
-        title: true,
-        priority: true,
-      }
-    });
+    const allResisted = await db
+      .select({
+        id: tasks.id,
+        userId: tasks.userId,
+        title: tasks.title,
+        priority: tasks.priority,
+      })
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.polarity, "NEGATIVE"),
+          eq(tasks.isCompleted, false)
+        )
+      );
 
     if (allResisted.length > 0) {
-      // Group by user_id
-      const byUser = allResisted.reduce<Record<string, typeof allResisted>>((acc, t) => {
-        if (!acc[t.user_id]) acc[t.user_id] = [];
-        acc[t.user_id].push(t);
-        return acc;
-      }, {});
+      // Group by userId
+      const byUser = allResisted.reduce<Record<string, typeof allResisted>>(
+        (acc, t) => {
+          if (!acc[t.userId]) acc[t.userId] = [];
+          acc[t.userId].push(t);
+          return acc;
+        },
+        {}
+      );
 
       // Untuk setiap user, hitung total bonus XP dari task yang berhasil ditahan
-      for (const [userId, tasks] of Object.entries(byUser)) {
-        const totalXpBonus = tasks.reduce((sum, t) => {
-          const bonus = t.priority === "High" ? 50 : t.priority === "Medium" ? 25 : 10;
+      for (const [userId, userTasks] of Object.entries(byUser)) {
+        const totalXpBonus = userTasks.reduce((sum, t) => {
+          const bonus =
+            t.priority === "High" ? 50 : t.priority === "Medium" ? 25 : 10;
           return sum + bonus;
         }, 0);
 
-        await prisma.$transaction([
-          // Catat di point_logs
-          prisma.point_logs.create({
-            data: {
-              user_id: userId,
-              xp_change: totalXpBonus,
-              points_change: 0,
-              source_type: "RESISTANCE_BONUS",
-              description: `Resisted ${tasks.length} forbidden protocol(s) — bonus XP awarded`,
-            }
-          }),
+        await db.transaction(async (tx) => {
+          // Catat di pointLogs
+          await tx.insert(pointLogs).values({
+            userId,
+            xpChange: totalXpBonus,
+            pointsChange: 0,
+            sourceType: "punishment", // closest available enum value
+            description: `Resisted ${userTasks.length} forbidden protocol(s) — bonus XP awarded`,
+          });
+
           // Update profil langsung
-          prisma.$executeRaw`
-            UPDATE profiles
-            SET
-              current_xp = current_xp + ${totalXpBonus},
-              updated_at = NOW()
-            WHERE id = ${userId}::uuid
-          `,
-        ]);
+          await tx
+            .update(profiles)
+            .set({
+              currentXp: sql`${profiles.currentXp} + ${totalXpBonus}`,
+              updatedAt: new Date(),
+            })
+            .where(eq(profiles.id, userId)); // Switch from profiles.userId to profiles.id since userId column is named id!
+        });
       }
     }
 
     // ─── Step 2: Jalankan stored procedure reset harian ───
-    await prisma.$executeRawUnsafe(
-      `SELECT public.handle_smart_global_reset()`
-    );
+    await db.execute(sql`SELECT public.handle_smart_global_reset()`);
 
     return NextResponse.json({
       success: true,

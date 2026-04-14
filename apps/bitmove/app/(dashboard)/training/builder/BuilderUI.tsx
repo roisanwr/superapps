@@ -3,8 +3,8 @@
 import { useState, useTransition, useEffect } from "react";
 import { Plus, X, Zap, ChevronRight, Trash2 } from "lucide-react";
 import { saveAndActivateProgram, SlotInput } from "./actions";
-import { tier_enum } from "@prisma/client";
 import { useRouter } from "next/navigation";
+import type { TierEnum } from "@/lib/services/programService";
 
 const DAYS = [
   { label: "SEN", full: "Senin", value: 1 },
@@ -16,7 +16,7 @@ const DAYS = [
   { label: "MIN", full: "Minggu", value: 7 },
 ];
 
-const TIERS: tier_enum[] = ["D", "C", "B", "A", "S", "SS"];
+const TIERS: TierEnum[] = ["D", "C", "B", "A", "S", "SS"];
 const TIER_COLORS: Record<string, string> = {
   D: "text-on-surface-variant border-outline-variant",
   C: "text-primary border-primary",
@@ -29,8 +29,8 @@ const TIER_COLORS: Record<string, string> = {
 interface ExerciseItem {
   id: string;
   name: string;
-  target_muscle: string | null;
-  scale_type: string;
+  targetMuscle: string | null;
+  scaleType: string;
 }
 
 interface Props {
@@ -41,7 +41,7 @@ interface Props {
 interface SlotState {
   exerciseId: string;
   exerciseName: string;
-  targetTier: tier_enum;
+  targetTier: TierEnum;
 }
 
 export function BuilderUI({ exercises, initialProgram }: Props) {
@@ -55,7 +55,7 @@ export function BuilderUI({ exercises, initialProgram }: Props) {
   // Modal state
   const [modal, setModal] = useState<{ week: number; day: number } | null>(null);
   const [pickedExercise, setPickedExercise] = useState<ExerciseItem | null>(null);
-  const [pickedTier, setPickedTier] = useState<tier_enum>("C");
+  const [pickedTier, setPickedTier] = useState<TierEnum>("C");
   const [exSearch, setExSearch] = useState("");
 
   const slotKey = (week: number, day: number) => `${week}-${day}`;
@@ -63,17 +63,17 @@ export function BuilderUI({ exercises, initialProgram }: Props) {
   useEffect(() => {
     if (initialProgram) {
       setTitle(initialProgram.title);
-      setTotalWeeks(initialProgram.total_weeks);
+      setTotalWeeks(initialProgram.totalWeeks);
       
       const parsedSlots: Record<string, SlotState[]> = {};
-      if (initialProgram.program_schedules) {
-        initialProgram.program_schedules.forEach((s: any) => {
-          const key = `${s.week_number}-${s.day_of_week}`;
+      if (initialProgram.schedules) {
+        initialProgram.schedules.forEach((s: any) => {
+          const key = `${s.weekNumber}-${s.dayOfWeek}`;
           if (!parsedSlots[key]) parsedSlots[key] = [];
           parsedSlots[key].push({
-            exerciseId: s.exercise_id,
-            exerciseName: s.exercise_library?.name || "Unknown",
-            targetTier: s.target_tier,
+            exerciseId: s.exerciseId,
+            exerciseName: s.exercise?.name || "Unknown",
+            targetTier: s.targetTier,
           });
         });
       }
@@ -329,7 +329,7 @@ export function BuilderUI({ exercises, initialProgram }: Props) {
                         {ex.name}
                       </div>
                       <div className="font-headline font-bold text-[10px] uppercase tracking-widest text-on-surface-variant">
-                        {ex.target_muscle} • {ex.scale_type}
+                        {ex.targetMuscle} • {ex.scaleType}
                       </div>
                     </div>
                     {pickedExercise?.id === ex.id && (

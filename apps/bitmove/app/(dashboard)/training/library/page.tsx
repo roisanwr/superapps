@@ -1,5 +1,7 @@
-import { auth } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { requireUser } from "@/lib/session";
+import { db } from "@/lib/db";
+import { exerciseLibrary } from "@woilaa/db-bitmove";
+import { eq, asc } from "drizzle-orm";
 import Link from "next/link";
 import { ArrowLeft, Dumbbell, Database } from "lucide-react";
 import { createExercise } from "../actions";
@@ -9,16 +11,16 @@ export const metadata = {
 };
 
 export default async function TrainingLibraryPage() {
-  const session = await auth();
-  if (!session?.user?.id) return <div>Unauthorized Access.</div>;
+  const user = await requireUser().catch(() => null);
+  if (!user?.sub) return <div>Unauthorized Access.</div>;
 
-  const library = await prisma.exercise_library.findMany({
-    where: { is_archived: false },
-    orderBy: { name: "asc" }
+  const library = await db.query.exerciseLibrary.findMany({
+    where: eq(exerciseLibrary.isArchived, false),
+    orderBy: [asc(exerciseLibrary.name)]
   });
 
-  const systemExercises = library.filter(ex => !ex.created_by);
-  const customExercises = library.filter(ex => ex.created_by === session?.user?.id);
+  const systemExercises = library.filter(ex => !ex.createdBy);
+  const customExercises = library.filter(ex => ex.createdBy === user.sub);
 
   return (
     <div className="max-w-5xl mx-auto pb-24 animate-in fade-in duration-500">
@@ -56,7 +58,7 @@ export default async function TrainingLibraryPage() {
                     <div className="mb-2 md:mb-0">
                       <div className="font-headline font-bold uppercase text-white">{ex.name}</div>
                       <div className="font-headline font-bold text-[10px] text-on-surface-variant uppercase tracking-widest mt-1">
-                        {ex.target_muscle || "Full Body"} • {ex.scale_type}
+                        {ex.targetMuscle || "Full Body"} • {ex.scaleType}
                       </div>
                     </div>
                     <div className="bg-surface-container-highest px-3 py-1 text-[10px] text-on-surface-variant font-headline uppercase font-bold tracking-widest border border-outline-variant/30">
@@ -87,7 +89,7 @@ export default async function TrainingLibraryPage() {
                     <div className="mb-2 md:mb-0">
                       <div className="font-headline font-bold uppercase text-white">{ex.name}</div>
                       <div className="font-headline font-bold text-[10px] text-on-surface-variant uppercase tracking-widest mt-1">
-                        {ex.target_muscle || "Full Body"} • {ex.scale_type}
+                        {ex.targetMuscle || "Full Body"} • {ex.scaleType}
                       </div>
                     </div>
                     <div className="bg-primary/10 text-primary border border-primary/30 px-3 py-1 text-[10px] font-headline uppercase font-bold tracking-widest">

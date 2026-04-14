@@ -52,7 +52,7 @@ export function SettingsClient({ profile }: { profile: any }) {
               </label>
               <input 
                 name="fullName" 
-                defaultValue={profile?.full_name || ""} 
+                defaultValue={profile?.fullName || ""} 
                 className="w-full bg-surface-container-high border border-outline-variant px-4 py-3 text-sm focus:border-primary focus:outline-none text-white font-headline transition-colors" 
               />
             </div>

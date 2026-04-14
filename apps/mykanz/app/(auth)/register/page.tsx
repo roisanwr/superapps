@@ -16,6 +16,7 @@ export default function RegisterPage() {
 
     const form = e.currentTarget
     const name = (form.elements.namedItem('name') as HTMLInputElement)?.value
+    const username = (form.elements.namedItem('username') as HTMLInputElement)?.value
     const email = (form.elements.namedItem('email') as HTMLInputElement)?.value
     const password = (form.elements.namedItem('password') as HTMLInputElement)?.value
 
@@ -23,7 +24,7 @@ export default function RegisterPage() {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, username, email, password }),
       })
       const result = await res.json()
       if (!res.ok || result?.error) {
@@ -61,6 +62,17 @@ export default function RegisterPage() {
               required
               className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 transition-all"
               placeholder="Misal: Sultan Depok"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Username</label>
+            <input
+              type="text"
+              name="username"
+              required
+              className="block w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 transition-all"
+              placeholder="sultandepok123"
             />
           </div>
 

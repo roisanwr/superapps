@@ -75,7 +75,7 @@ export default async function PortfolioDashboardPage() {
   .orderBy(desc(assetTransactions.transactionDate))
   .limit(8);
 
-  // Transform for rendering compatibility (match old prisma shape)
+  // Transform for rendering compatibility (match old data shape)
   const assets = assetsRaw.map((a: any) => ({
     id: a.id,
     name: a.name,

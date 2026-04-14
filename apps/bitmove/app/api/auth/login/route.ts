@@ -11,21 +11,21 @@ import { signAccessToken, signRefreshToken } from "@/lib/jwt";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { email, password } = body;
+    const { identifier, password } = body;
 
-    if (!email || !password) {
+    if (!identifier || !password) {
       return NextResponse.json(
-        { error: "Email dan password wajib diisi!" },
+        { error: "Username/email dan password wajib diisi!" },
         { status: 400 }
       );
     }
 
-    // 1. Cari user by email
-    const user = await getUserByIdentifier(email);
+    // 1. Cari user by identifier (email atau username)
+    const user = await getUserByIdentifier(identifier);
 
     if (!user || !user.passwordHash) {
       return NextResponse.json(
-        { error: "Email atau password salah!" },
+        { error: "Username/email atau password salah!" },
         { status: 401 }
       );
     }
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     const isValid = await bcrypt.compare(password, user.passwordHash);
     if (!isValid) {
       return NextResponse.json(
-        { error: "Email atau password salah!" },
+        { error: "Username/email atau password salah!" },
         { status: 401 }
       );
     }

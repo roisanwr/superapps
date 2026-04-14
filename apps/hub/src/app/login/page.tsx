@@ -7,7 +7,7 @@ import { Eye, EyeOff, LogIn, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [formData, setFormData] = useState({ email: "", password: "" });
+  const [formData, setFormData] = useState({ identifier: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,17 +61,17 @@ export default function LoginPage() {
         {/* Card */}
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl shadow-black/50">
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Email */}
+            {/* Identifier */}
             <div className="space-y-1.5">
-              <label className="text-slate-300 text-sm font-semibold">Email</label>
+              <label className="text-slate-300 text-sm font-semibold">Email atau Username</label>
               <input
-                id="login-email"
-                type="email"
-                placeholder="kamu@email.com"
+                id="login-identifier"
+                type="text"
+                placeholder="kamu@email.com atau username_kamu"
                 required
-                autoComplete="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                autoComplete="username"
+                value={formData.identifier}
+                onChange={(e) => setFormData({ ...formData, identifier: e.target.value })}
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
               />
             </div>

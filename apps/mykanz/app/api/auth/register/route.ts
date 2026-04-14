@@ -3,8 +3,8 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import {
   isEmailTaken,
+  isUsernameTaken,
   createUser,
-  grantAppAccess,
 } from "@woilaa/db-auth";
 
 export async function POST(req: Request) {
@@ -35,10 +35,19 @@ export async function POST(req: Request) {
       );
     }
 
+    // Cek apakah username sudah terdaftar
+    const usernameTaken = await isUsernameTaken(username);
+    if (usernameTaken) {
+      return NextResponse.json(
+        { error: "Username ini sudah terdaftar. Coba pakai username lain!" },
+        { status: 409 }
+      );
+    }
+
     // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // Buat user baru di authdb
+    // Buat user baru di authdb (auto-grant akses sudah di-handle di fungsi ini)
     const newUser = await createUser({
       email,
       username,
@@ -47,10 +56,6 @@ export async function POST(req: Request) {
       role: "user",
       isActive: true,
     });
-
-    // Auto-grant akses ke semua app
-    await grantAppAccess(newUser.id, "mykanz");
-    await grantAppAccess(newUser.id, "bitmove");
 
     return NextResponse.json(
       {

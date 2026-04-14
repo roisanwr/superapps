@@ -8,7 +8,7 @@ export async function loginAction(prevState: any, formData: FormData) {
   const password = formData.get("password") as string;
 
   if (!identifier || !password) {
-    return { error: "Username/Email and Passcode are required." };
+    return { error: "Username/Email dan password wajib diisi." };
   }
 
   try {
@@ -24,13 +24,10 @@ export async function loginAction(prevState: any, formData: FormData) {
     const data = await res.json();
 
     if (!res.ok) {
-      return { error: data.error ?? "System malfunction." };
+      return { error: data.error ?? "Terjadi kesalahan sistem." };
     }
-
-    // Cookie sudah di-set oleh API route via Set-Cookie header.
-    // Redirect ke dashboard.
-  } catch {
-    return { error: "System malfunction. Try again." };
+  } catch (e) {
+    return { error: "Gagal terhubung ke server." };
   }
 
   redirect("/");
@@ -40,10 +37,10 @@ export async function registerAction(prevState: any, formData: FormData) {
   const email = formData.get("email") as string;
   const username = formData.get("username") as string;
   const password = formData.get("password") as string;
-  const name = formData.get("name") as string || username;
+  const name = formData.get("name") as string;
 
-  if (!email || !username || !password) {
-    return { error: "All fields are required." };
+  if (!email || !username || !password || !name) {
+    return { error: "Semua kolom wajib diisi." };
   }
 
   try {
@@ -59,10 +56,10 @@ export async function registerAction(prevState: any, formData: FormData) {
     const data = await res.json();
 
     if (!res.ok) {
-      return { error: data.error ?? "Failed to initialize operative profile." };
+      return { error: data.error ?? "Gagal membuat akun." };
     }
-  } catch {
-    return { error: "Failed to initialize operative profile." };
+  } catch (e) {
+    return { error: "Gagal terhubung ke server." };
   }
 
   redirect("/login");

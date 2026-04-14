@@ -35,11 +35,24 @@ export default function RegisterPage() {
 
           <div>
             <label className="block text-[10px] uppercase font-bold text-[#ababab] tracking-widest mb-1">
+              Email Address
+            </label>
+            <input
+              type="email"
+              name="email"
+              required
+              className="w-full bg-[#1f1f1f] border border-[#484848] px-4 py-3 text-sm focus:border-[#d575ff] focus:outline-none transition-colors"
+              placeholder="AGENT@HQ.COM"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] uppercase font-bold text-[#ababab] tracking-widest mb-1">
               Full Name (Optional)
             </label>
             <input
               type="text"
-              name="fullName"
+              name="name"
               className="w-full bg-[#1f1f1f] border border-[#484848] px-4 py-3 text-sm focus:border-[#d575ff] focus:outline-none transition-colors"
               placeholder="JOHN DOE"
             />

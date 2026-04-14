@@ -21,7 +21,7 @@ export async function GET() {
     
     // As in the original implementation, returning just user custom assets? 
     // Or normally we want to return both global and user assets? 
-    // We will return user specific assets and global assets to keep it simple, but let's just get user assets as the original Prisma query only checked user_id = session.user.id
+    // We will return user specific assets and global assets to keep it simple, but let's just get user assets as the original query only checked user_id = session.user.id
     
     const userSpecificAssets = await getUserAssets(user.sub);
     const globalSpecificAssets = await getGlobalAssets();

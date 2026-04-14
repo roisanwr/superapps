@@ -7,7 +7,7 @@ import {
 } from "@woilaa/db-bitmove";
 import { eq, and } from "drizzle-orm";
 
-// Gunakan type dari Drizzle schema, bukan @prisma/client
+// Gunakan type dari Drizzle schema
 export type TierEnum = (typeof tierEnum.enumValues)[number];
 
 export interface ScheduleSlot {

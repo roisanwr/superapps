@@ -80,7 +80,7 @@ export async function GET(request: Request) {
               currentXp: sql`${profiles.currentXp} + ${totalXpBonus}`,
               updatedAt: new Date(),
             })
-            .where(eq(profiles.id, userId)); // Switch from profiles.userId to profiles.id since userId column is named id!
+            .where(eq(profiles.userId, userId));
         });
       }
     }

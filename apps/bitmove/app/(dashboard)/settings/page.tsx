@@ -17,7 +17,7 @@ export default async function SettingsPage() {
 
   // Fetch the user's current profile settings
   const profile = await db.query.profiles.findFirst({
-    where: eq(profiles.id, user.sub)
+    where: eq(profiles.userId, user.sub)
   });
 
   return (

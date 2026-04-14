@@ -2,8 +2,8 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import {
-  getUserByEmail,
-  getAppAccessByUserId,
+  getUserByIdentifier,
+  getAllAppAccessByUserId,
   createSession,
 } from "@woilaa/db-auth";
 import { signAccessToken, signRefreshToken } from "@/lib/jwt";
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     }
 
     // 1. Cari user by email
-    const user = await getUserByEmail(email);
+    const user = await getUserByIdentifier(email);
 
     if (!user || !user.passwordHash) {
       return NextResponse.json(
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     }
 
     // 3. Cek akses app
-    const appAccess = await getAppAccessByUserId(user.id);
+    const appAccess = await getAllAppAccessByUserId(user.id);
     const grantedApps = appAccess
       .filter((a) => a.isGranted)
       .map((a) => a.appName) as ("mykanz" | "bitmove")[];

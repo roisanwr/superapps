@@ -14,7 +14,7 @@ export default async function MarketPage() {
 
   // Fetch the user's current points
   const profile = await db.query.profiles.findFirst({
-    where: eq(profiles.id, user.sub)
+    where: eq(profiles.userId, user.sub)
   });
 
   const rewardsList = await db.query.rewards.findMany({

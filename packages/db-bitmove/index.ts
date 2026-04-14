@@ -16,3 +16,6 @@ export * from "./queries/workouts";
 export * from "./queries/programs";
 export * from "./queries/rewards";
 export * from "./queries/gamification";
+
+// Drizzle client
+export { db } from "./client";

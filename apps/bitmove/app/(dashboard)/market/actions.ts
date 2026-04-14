@@ -32,7 +32,7 @@ export async function redeemReward(rewardId: string, price: number) {
   await db.transaction(async (tx) => {
     // 1. Get user to check points
     const profile = await tx.query.profiles.findFirst({
-      where: eq(profiles.id, userId)
+      where: eq(profiles.userId, userId)
     });
     
     if (!profile || (profile.currentPoints || 0) < price) {

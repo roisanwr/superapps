@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import {
-  getUserByEmail,
+  isEmailTaken,
   createUser,
   grantAppAccess,
 } from "@woilaa/db-auth";
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     }
 
     // Cek apakah email sudah terdaftar
-    const existingUser = await getUserByEmail(email);
+    const existingUser = await isEmailTaken(email);
     if (existingUser) {
       return NextResponse.json(
         { error: "Email ini sudah terdaftar. Coba pakai email lain!" },

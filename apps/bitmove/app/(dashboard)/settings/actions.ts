@@ -1,6 +1,6 @@
 "use server"
 
-import { requireUser, deleteSession } from "@/lib/session"
+import { requireUser } from "@/lib/session"
 import { db } from "@/lib/db"
 import { profiles } from "@woilaa/db-bitmove"
 import { eq } from "drizzle-orm"
@@ -23,7 +23,7 @@ export async function updateProfile(formData: FormData) {
       username,
       timezone,
       updatedAt: new Date()
-    }).where(eq(profiles.id, user.sub));
+    }).where(eq(profiles.userId, user.sub));
 
     revalidatePath("/settings");
     revalidatePath("/");
@@ -38,6 +38,6 @@ export async function updateProfile(formData: FormData) {
 }
 
 export async function logOutAction() {
-  deleteSession();
-  redirect("/login");
+  // Redirect to logout API which will clear httpOnly cookies
+  redirect("/api/auth/logout-redirect");
 }

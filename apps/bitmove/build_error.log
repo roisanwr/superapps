@@ -1,0 +1,29 @@
+
+> @superapp/bitmove@0.1.0 build /home/taqisanw/Projects/superapps/apps/bitmove
+> next build
+
+▲ Next.js 16.2.1 (Turbopack)
+- Environments: .env
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 6.9s
+  Running TypeScript ...
+Failed to type check.
+
+./app/(dashboard)/market/actions.ts:47:32
+Type error: No overload matches this call.
+  Overload 1 of 2, '(value: { userId: string | SQL<unknown> | Placeholder<string, any>; sourceType: "task" | "workout" | "streak_bonus" | "punishment" | SQL<unknown> | Placeholder<string, any>; ... 6 more ...; description?: string | ... 3 more ... | undefined; }): PgInsertBase<...>', gave the following error.
+    Type '"Reward Redemption"' is not assignable to type '"task" | "workout" | "streak_bonus" | "punishment" | SQL<unknown> | Placeholder<string, any>'.
+  Overload 2 of 2, '(values: { userId: string | SQL<unknown> | Placeholder<string, any>; sourceType: "task" | "workout" | "streak_bonus" | "punishment" | SQL<unknown> | Placeholder<string, any>; ... 6 more ...; description?: string | ... 3 more ... | undefined; }[]): PgInsertBase<...>', gave the following error.
+    Object literal may only specify known properties, and 'userId' does not exist in type '{ userId: string | SQL<unknown> | Placeholder<string, any>; sourceType: "task" | "workout" | "streak_bonus" | "punishment" | SQL<unknown> | Placeholder<string, any>; ... 6 more ...; description?: string | ... 3 more ... | undefined; }[]'.
+
+  [90m45 |[0m     [90m//    Let's check `db.sql`: SET current_points = current_points + NEW.points_change. [0m
+  [90m46 |[0m     [90m//    Yes, negative NEW.points_change will subtract it correctly.[0m
+[31m[1m>[0m [90m47 |[0m     [36mawait[0m tx.insert(pointLogs).values({
+  [90m   |[0m                                [31m[1m^[0m
+  [90m48 |[0m       userId,
+  [90m49 |[0m       xpChange: [35m0[0m,
+  [90m50 |[0m       pointsChange: -[33mMath[0m.abs(price),
+Next.js build worker exited with code: 1 and signal: null
+ ELIFECYCLE  Command failed with exit code 1.

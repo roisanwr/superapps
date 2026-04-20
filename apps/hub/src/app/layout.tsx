@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
+import { BottomNav } from "@superapp/ui";
+import { LayoutDashboard, Wallet, Sword } from "lucide-react";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -27,8 +29,15 @@ export default function RootLayout({
       lang="en"
       className={`${spaceGrotesk.variable} ${inter.variable} h-full antialiased`}
     >
-      <body className="bg-white text-[#334155] dark:bg-[#0B1120] dark:text-[#94A3B8] transition-colors duration-300 font-body min-h-full flex flex-col">
+      <body className="bg-white text-[#334155] dark:bg-[#0B1120] dark:text-[#94A3B8] transition-colors duration-300 font-body min-h-full flex flex-col pb-16 md:pb-0">
         {children}
+        <BottomNav 
+          items={[
+            { label: "Hub", href: "/", icon: <LayoutDashboard className="w-full h-full" />, isActive: true },
+            { label: "Finance", href: "/finance", icon: <Wallet className="w-full h-full" /> },
+            { label: "Quests", href: "/quests", icon: <Sword className="w-full h-full" /> },
+          ]}
+        />
       </body>
     </html>
   );

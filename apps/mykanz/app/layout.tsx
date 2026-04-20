@@ -5,6 +5,8 @@ import './globals.css'
 import { getCurrentUser } from '@/lib/session'
 import DashboardLayout from '@/components/DashboardLayout' // Import komponen mesin kita!
 import { FeedbackProvider } from '@/components/FeedbackProvider'
+import { BottomNav } from "@superapp/ui";
+import { LayoutDashboard, Wallet, Sword } from "lucide-react";
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -31,6 +33,15 @@ export default async function RootLayout({
             </DashboardLayout>
           ) : (
             children
+          )}
+          {user && (
+            <BottomNav 
+              items={[
+                { label: "Hub", href: "/", icon: <LayoutDashboard className="w-full h-full" /> },
+                { label: "Finance", href: "/finance", icon: <Wallet className="w-full h-full" />, isActive: true },
+                { label: "Quests", href: "/quests", icon: <Sword className="w-full h-full" /> },
+              ]}
+            />
           )}
         </FeedbackProvider>
       </body>

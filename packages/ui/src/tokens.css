@@ -1,0 +1,14 @@
+/* packages/ui/src/tokens.css */
+@import "tailwindcss";
+
+@theme inline {
+  --color-primary: var(--app-primary, oklch(60% 0.15 260)); /* Default Indigo */
+  --color-primary-hover: var(--app-primary-hover, oklch(55% 0.15 260));
+  --color-surface: var(--app-surface, oklch(98% 0.01 240));
+  --color-surface-alt: var(--app-surface-alt, oklch(95% 0.01 240));
+  --color-text: var(--app-text, oklch(20% 0.02 240));
+  --color-text-muted: var(--app-text-muted, oklch(40% 0.02 240));
+  --color-border: var(--app-border, oklch(90% 0.01 240));
+  --radius-base: 0.75rem;
+  --font-sans: var(--app-font, 'Inter', sans-serif);
+}

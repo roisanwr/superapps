@@ -34,6 +34,14 @@
 @layer base {
   :root {
     color-scheme: dark;
+    /* UI Tokens Override untuk Sinkronisasi @superapp/ui */
+    --app-primary: var(--color-primary);
+    --app-primary-hover: var(--color-primary-dim);
+    --app-surface: var(--color-surface);
+    --app-surface-alt: var(--color-surface-container);
+    --app-text: #ffffff;
+    --app-text-muted: var(--color-on-surface-variant);
+    --app-border: var(--color-outline-variant);
   }
 
   body {

@@ -10,3 +10,4 @@ export * from "./components/Modal";
 
 // Layout & Navigation
 export * from "./components/TopBar";
+export * from "./components/BottomNav";

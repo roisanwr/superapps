@@ -38,6 +38,15 @@
 /* Base Styles & Custom Utilities */
 @layer base {
   :root {
+    /* UI Tokens Override untuk Sinkronisasi @superapp/ui (Light) */
+    --app-primary: var(--color-primary-600);
+    --app-primary-hover: var(--color-primary-700);
+    --app-surface: #ffffff;
+    --app-surface-alt: #f4f6f8;
+    --app-text: #1f2937;
+    --app-text-muted: #6b7280;
+    --app-border: #e5e7eb;
+
     --jarak-atas-header: 12px;
     --jarak-kiri-kanan: 16px;
     --jarak-bawah: 12px;
@@ -70,6 +79,17 @@
   body {
     /* Hapus h-screen, overflow-hidden, flex, flex-col di sini */
     @apply bg-[#f4f6f8] text-gray-800 font-sans transition-colors duration-300;
+  }
+  
+  .dark {
+    /* UI Tokens Override (Dark) */
+    --app-primary: var(--color-primary-500);
+    --app-primary-hover: var(--color-primary-400);
+    --app-surface: #0f172a;
+    --app-surface-alt: #1e293b;
+    --app-text: #f8fafc;
+    --app-text-muted: #94a3b8;
+    --app-border: #334155;
   }
   
   .dark body {
